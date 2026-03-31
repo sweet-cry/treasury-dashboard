@@ -392,51 +392,59 @@ def build_nl_data():
 def fetch_tic_data():
     r = req.get(TIC_URL, timeout=30)
     r.raise_for_status()
-    lines = r.text.splitlines()
+    text = r.text
 
     records = []
     current_year = None
-    months_order = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
-    for i, line in enumerate(lines):
-        line = line.strip()
-        # 연도 헤더 파싱
-        if re.match(r'\s*(Dec|Jan)\s+\d{4}', line):
-            parts = line.split()
-            for p in parts:
-                if p.isdigit() and len(p) == 4:
-                    current_year = int(p)
-                    break
-        # 국가 데이터 파싱
+    for line in text.splitlines():
+        # 탭 구분자로 분리
+        parts = [p.strip() for p in line.split("\t")]
+        parts = [p for p in parts if p]
+
+        # 연도 헤더 행: Country + 연도들
+        if parts and parts[0] == "Country":
+            years = [p for p in parts[1:] if re.match(r"^\d{4}$", p)]
+            if years:
+                current_year = int(years[0])
+            continue
+
         if current_year is None:
             continue
+
+        if not parts:
+            continue
+
+        # 국가명 매칭
+        raw_name = parts[0].strip('"').strip()
         for country in TIC_COUNTRIES:
-            clean = country.replace('"','')
-            if line.startswith(f'"{country}"') or line.startswith(clean):
-                vals = re.findall(r'[\d,]+\.?\d*', line[len(clean)+2:] if '"' in line else line[len(clean):])
-                if len(vals) >= 12:
-                    for m_idx, v in enumerate(vals[:12]):
+            clean = country.replace('"', '').strip()
+            if raw_name == clean:
+                nums = []
+                for p in parts[1:]:
+                    try:
+                        nums.append(float(p.replace(',', '')))
+                    except ValueError:
+                        pass
+                if len(nums) >= 12:
+                    for m_idx, v in enumerate(nums[:12]):
                         month_num = 12 - m_idx
-                        date_str = f"{current_year}-{month_num:02d}-01"
-                        try:
-                            records.append({"date": pd.to_datetime(date_str),
-                                            "country": clean, "value": float(v.replace(',',''))})
-                        except Exception:
-                            pass
+                        records.append({
+                            "date": pd.to_datetime(f"{current_year}-{month_num:02d}-01"),
+                            "country": clean,
+                            "value": v
+                        })
+                break
 
     if not records:
         raise ValueError("TIC 데이터 파싱 실패")
 
     df = pd.DataFrame(records)
     df = df.drop_duplicates(subset=["date","country"]).sort_values("date")
-    pivot = df.pivot(index="date", columns="country", values="value")
-    pivot = pivot.sort_index()
-    # 2000년 이후만
+    pivot = df.pivot(index="date", columns="country", values="value").sort_index()
     pivot = pivot[pivot.index >= "2000-01-01"]
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 완료: {len(pivot)}개 포인트")
+    print(f"TIC 완료: {len(pivot)}개 포인트, {len(pivot.columns)}개국")
     return pivot
-
-
 def fmt_val(v):
     if abs(v) >= 1_000:
         return f"{v/1_000:.2f}T"
