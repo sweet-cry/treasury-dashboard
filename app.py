@@ -307,7 +307,12 @@ HTML_TEMPLATE = """
 
   <div class="info-box">
     <b style="color:#cc0000;">TIC 데이터란?</b><br>
-    Treasury International Capital — 미 재무부가 매월 발표하는 외국인의 미국채 보유 현황. <b>약 6주 후행 발표</b> (예: 3월 말 발표 = 1월 데이터). 중국·일본의 보유량 변화는 달러 패권 및 미국채 금리에 영향을 미치는 핵심 지표.<br><br>
+    Treasury International Capital — 미 재무부가 매월 발표하는 외국인의 미국채 보유 현황. 중국·일본의 보유량 변화는 달러 패권 및 미국채 금리에 영향을 미치는 핵심 지표.<br><br>
+    <b style="color:#555;">발표 일정 (매월 18일경):</b><br>
+    &nbsp;· 1월 데이터 → 3월 18일 발표<br>
+    &nbsp;· 2월 데이터 → 4월 18일 발표<br>
+    &nbsp;· 3월 데이터 → 5월 18일 발표<br>
+    &nbsp;· <i>이하 동일 — 항상 약 6주 후행</i><br><br>
     <b style="color:#555;">주의:</b> 보유량은 custodian 기준 — 중국 투자자가 벨기에 은행에 예탁 시 벨기에로 집계. 룩셈부르크·케이맨·벨기에 등 금융 허브의 높은 수치는 실제 해당국이 아닌 제3국 자금일 가능성이 높음.
   </div>
 
