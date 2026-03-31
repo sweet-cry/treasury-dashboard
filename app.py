@@ -25,7 +25,7 @@ REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "3600"))
 START_DATE       = os.environ.get("START_DATE", "2000-01-01")
 PORT             = int(os.environ.get("PORT", "5000"))
 
-TIC_URL = "https://ticdata.treasury.gov/Publish/mfhhis01.txt"
+TIC_URL = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
 TIC_COUNTRIES = ["Japan", "China, Mainland", "United Kingdom", "Luxembourg",
                  "Cayman Islands", "Canada", "Belgium", "Ireland",
                  "France", "Switzerland", "Taiwan", "India", "Brazil"]
