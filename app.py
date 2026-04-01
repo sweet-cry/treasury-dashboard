@@ -10,7 +10,7 @@ Net Liquidity + 국가별 미국채 보유 Dashboard
   - RRP  (일간): 매일 00:30
   - SPX  (일간): 매일 07:00
   - WALCL/TGA (주간 H.4.1): 매주 목요일 05:30
-  - TIC  (월간): 매월 19일 02:00
+  - TIC  (월간): 매월 18일 02:00
 """
 
 import os
@@ -32,7 +32,7 @@ START_DATE = os.environ.get("START_DATE", "2000-01-01")
 PORT       = int(os.environ.get("PORT", "5000"))
 KST        = pytz.timezone("Asia/Seoul")
 
-TIC_URL = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
+TIC_URL = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt"
 TIC_COUNTRIES = ["Japan", "China, Mainland", "United Kingdom", "Luxembourg",
                  "Cayman Islands", "Canada", "Belgium", "Ireland",
                  "France", "Switzerland", "Taiwan", "India", "Brazil"]
@@ -395,29 +395,29 @@ def build_nl_data():
 
 
 def fetch_tic_data():
+    """
+    재무부 slt_table5.txt 직접 파싱 (FRED 미러링 없이 최신 데이터 즉시 반영)
+    컬럼 포맷: Country | 2026-01 | 2025-12 | 2025-11 | ...
+    """
     r = req.get(TIC_URL, timeout=30)
     r.raise_for_status()
     text = r.text
 
     records = []
-    current_year = None
+    date_cols = []  # ["2026-01", "2025-12", ...]
 
     for line in text.splitlines():
-        # 탭 구분자로 분리
         parts = [p.strip() for p in line.split("\t")]
         parts = [p for p in parts if p]
-
-        # 연도 헤더 행: Country + 연도들
-        if parts and parts[0] == "Country":
-            years = [p for p in parts[1:] if re.match(r"^\d{4}$", p)]
-            if years:
-                current_year = int(years[0])
-            continue
-
-        if current_year is None:
-            continue
-
         if not parts:
+            continue
+
+        # 헤더 행: 첫 셀이 "Country", 이후 셀이 "YYYY-MM" 형태
+        if parts[0] == "Country":
+            date_cols = [p for p in parts[1:] if re.match(r"^\d{4}-\d{2}$", p)]
+            continue
+
+        if not date_cols:
             continue
 
         # 국가명 매칭
@@ -430,25 +430,25 @@ def fetch_tic_data():
                     try:
                         nums.append(float(p.replace(',', '')))
                     except ValueError:
-                        pass
-                if len(nums) >= 12:
-                    for m_idx, v in enumerate(nums[:12]):
-                        month_num = 12 - m_idx
+                        nums.append(None)
+                for i, date_str in enumerate(date_cols):
+                    if i < len(nums) and nums[i] is not None:
                         records.append({
-                            "date": pd.to_datetime(f"{current_year}-{month_num:02d}-01"),
+                            "date": pd.to_datetime(date_str + "-01"),
                             "country": clean,
-                            "value": v
+                            "value": nums[i]
                         })
                 break
 
     if not records:
-        raise ValueError("TIC 데이터 파싱 실패")
+        raise ValueError("TIC 데이터 파싱 실패 — slt_table5.txt 포맷 확인 필요")
 
     df = pd.DataFrame(records)
-    df = df.drop_duplicates(subset=["date","country"]).sort_values("date")
+    df = df.drop_duplicates(subset=["date", "country"]).sort_values("date")
     pivot = df.pivot(index="date", columns="country", values="value").sort_index()
     pivot = pivot[pivot.index >= "2000-01-01"]
-    print(f"TIC 완료: {len(pivot)}개 포인트, {len(pivot.columns)}개국")
+    latest = pivot.index[-1].strftime("%Y-%m")
+    print(f"TIC 완료: {len(pivot)}개 포인트, {len(pivot.columns)}개국, 최신={latest}")
     return pivot
 def fmt_val(v):
     if abs(v) >= 1_000:
@@ -668,9 +668,9 @@ def start_scheduler():
     scheduler.add_job(refresh_nl,  CronTrigger(hour=0,  minute=30, timezone=KST), id="rrp_daily")
     scheduler.add_job(refresh_nl,  CronTrigger(hour=7,  minute=0,  timezone=KST), id="spx_daily")
     scheduler.add_job(refresh_nl,  CronTrigger(day_of_week="thu", hour=5, minute=30, timezone=KST), id="h41_weekly")
-    scheduler.add_job(refresh_tic, CronTrigger(day=19,  hour=2,   minute=0,  timezone=KST), id="tic_monthly")
+    scheduler.add_job(refresh_tic, CronTrigger(day=18,  hour=2,   minute=0,  timezone=KST), id="tic_monthly")
     scheduler.start()
-    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=19일 02:00 (KST)")
+    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=18일 02:00 (KST)")
     return scheduler
 
 
