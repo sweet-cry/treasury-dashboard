@@ -1,7 +1,7 @@
-﻿flask
+flask
 requests
-apscheduler
-gunicorn
 pandas
 numpy
 plotly
+apscheduler
+pytz

@@ -2,28 +2,35 @@
 Net Liquidity + 국가별 미국채 보유 Dashboard
 =============================================
 환경변수:
-  FRED_API_KEY     : FRED API Key (필수)
-  REFRESH_INTERVAL : 갱신 주기 초 (기본 3600)
-  START_DATE       : 시작일 (기본 2000-01-01)
-  PORT             : Railway 자동 설정
+  FRED_API_KEY : FRED API Key (필수)
+  START_DATE   : 시작일 (기본 2000-01-01)
+  PORT         : Railway 자동 설정
+
+업데이트 스케줄 (KST):
+  - RRP  (일간): 매일 00:30
+  - SPX  (일간): 매일 07:00
+  - WALCL/TGA (주간 H.4.1): 매주 목요일 05:30
+  - TIC  (월간): 매월 19일 02:00
 """
 
 import os
 import io
 import re
 import threading
-import time
 import requests as req
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from flask import Flask, render_template_string
-from datetime import datetime
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
-API_KEY          = os.environ.get("FRED_API_KEY", "")
-REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "3600"))
-START_DATE       = os.environ.get("START_DATE", "2000-01-01")
-PORT             = int(os.environ.get("PORT", "5000"))
+API_KEY    = os.environ.get("FRED_API_KEY", "")
+START_DATE = os.environ.get("START_DATE", "2000-01-01")
+PORT       = int(os.environ.get("PORT", "5000"))
+KST        = pytz.timezone("Asia/Seoul")
 
 TIC_URL = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
 TIC_COUNTRIES = ["Japan", "China, Mainland", "United Kingdom", "Luxembourg",
@@ -41,6 +48,7 @@ cache = {
     "chart1_html": None, "chart2_html": None,
     "summary": None, "table_rows": None,
     "model_info": None, "updated_at": None, "error": None,
+    "next_h41": None,
     "tic_chart_html": None, "tic_table": None,
     "tic_updated_at": None, "tic_error": None,
 }
@@ -114,16 +122,7 @@ HTML_TEMPLATE = """
     .footer{font-size:10px;color:#aaa;text-align:center;padding:10px;border-top:1px solid #ddd;margin-top:4px;}
   </style>
   <script>
-    let cd={{ refresh_interval }};
-    function tick(){
-      cd--;
-      const el=document.getElementById('cd');
-      if(el) el.textContent=Math.floor(cd/60)+'min '+String(cd%60).padStart(2,'0')+'s 후 자동갱신';
-      if(cd<=0) location.reload();
-      else setTimeout(tick,1000);
-    }
     window.onload=function(){
-      tick();
       {% if not summary and not error %}setTimeout(()=>location.reload(),10000);{% endif %}
     };
     function manualRefresh(){
@@ -155,7 +154,6 @@ HTML_TEMPLATE = """
 <div class="header">
   <h1>Federal Reserve Dashboard <span class="badge">LIVE</span></h1>
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-    <span class="meta" id="cd"></span>
     <span class="meta">Updated: {{ updated_at }}</span>
     <button class="refresh-btn" onclick="manualRefresh()">Refresh</button>
   </div>
@@ -177,8 +175,8 @@ HTML_TEMPLATE = """
   <div class="metrics">
     <div class="mc"><div class="mc-lbl">Net Liquidity</div><div class="mc-val">{{ summary.nl }}</div><div class="mc-sub {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_chg }}</div></div>
     <div class="mc"><div class="mc-lbl">NL Regression FV</div><div class="mc-val">{{ summary.fv_nl }}</div><div class="mc-sub {{ 'pos' if summary.fv_nl_cheap else ('neg' if summary.fv_nl_cheap is not none else 'neu') }}">{{ summary.fv_nl_gap }}</div></div>
-    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">주간</span></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }}</div></div>
-    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">일간</span></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }}</div></div>
+    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">주간</span></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} · H.4.1 매주 수요일</div></div>
+    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">주간</span></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} · 다음 발표 ~{{ next_h41 }}</div></div>
     <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">일간</span></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
@@ -617,27 +615,41 @@ def build_tic_table(pivot):
     return rows[:15]
 
 
-def refresh_data():
+
+
+
+def next_thursday_kst():
+    now = datetime.now(KST)
+    days_ahead = (3 - now.weekday()) % 7
+    if days_ahead == 0 and now.hour >= 6:
+        days_ahead = 7
+    return (now + timedelta(days=days_ahead)).strftime("%m-%d")
+
+
+def refresh_nl():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] NL 갱신 시작...")
     try:
         df, model_info = build_nl_data()
-        cache["summary"] = build_nl_summary(df)
+        cache["summary"]     = build_nl_summary(df)
         cache["chart1_html"] = build_chart1(df)
         cache["chart2_html"] = build_chart2(df)
-        cache["table_rows"] = build_nl_table(df)
-        cache["model_info"] = model_info
-        cache["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cache["table_rows"]  = build_nl_table(df)
+        cache["model_info"]  = model_info
+        cache["updated_at"]  = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
+        cache["next_h41"]    = next_thursday_kst()
         cache["error"] = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] NL 완료")
     except Exception as e:
         cache["error"] = str(e)
         print(f"[{datetime.now().strftime('%H:%M:%S')}] NL 오류: {e}")
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 갱신 시작...")
+
+def refresh_tic():
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] TIC 갱신 시작...")
     try:
         pivot = fetch_tic_data()
         cache["tic_chart_html"] = build_tic_chart(pivot)
-        cache["tic_table"] = build_tic_table(pivot)
+        cache["tic_table"]      = build_tic_table(pivot)
         cache["tic_updated_at"] = pivot.index[-1].strftime("%Y-%m")
         cache["tic_error"] = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 완료")
@@ -646,11 +658,20 @@ def refresh_data():
         print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 오류: {e}")
 
 
-def background_loop():
-    refresh_data()
-    while True:
-        time.sleep(REFRESH_INTERVAL)
-        refresh_data()
+def refresh_data():
+    refresh_nl()
+    refresh_tic()
+
+
+def start_scheduler():
+    scheduler = BackgroundScheduler(timezone=KST)
+    scheduler.add_job(refresh_nl,  CronTrigger(hour=0,  minute=30, timezone=KST), id="rrp_daily")
+    scheduler.add_job(refresh_nl,  CronTrigger(hour=7,  minute=0,  timezone=KST), id="spx_daily")
+    scheduler.add_job(refresh_nl,  CronTrigger(day_of_week="thu", hour=5, minute=30, timezone=KST), id="h41_weekly")
+    scheduler.add_job(refresh_tic, CronTrigger(day=19,  hour=2,   minute=0,  timezone=KST), id="tic_monthly")
+    scheduler.start()
+    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=19일 02:00 (KST)")
+    return scheduler
 
 
 @app.route("/")
@@ -663,13 +684,14 @@ def index():
         summary=cache["summary"],
         table_rows=cache["table_rows"] or [],
         updated_at=cache["updated_at"] or "—",
-        error=cache["error"], refresh_interval=REFRESH_INTERVAL,
+        error=cache["error"],
         model_info=cache["model_info"],
         tic_chart_html=cache.get("tic_chart_html"),
         tic_table=cache.get("tic_table") or [],
         tic_updated_at=cache.get("tic_updated_at") or "—",
         tic_error=cache.get("tic_error"),
-        tic_legend=tic_legend)
+        tic_legend=tic_legend,
+        next_h41=cache.get("next_h41") or "—")
 
 
 @app.route("/refresh")
@@ -683,7 +705,7 @@ def health():
     return "ok"
 
 
-threading.Thread(target=background_loop, daemon=True).start()
+threading.Thread(target=lambda: (refresh_data(), start_scheduler()), daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
