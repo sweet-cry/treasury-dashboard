@@ -32,7 +32,8 @@ START_DATE = os.environ.get("START_DATE", "2000-01-01")
 PORT       = int(os.environ.get("PORT", "5000"))
 KST        = pytz.timezone("Asia/Seoul")
 
-TIC_URL = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt"
+TIC_URL_HIST = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
+TIC_URL_CURR = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt"
 TIC_COUNTRIES = ["Japan", "China, Mainland", "United Kingdom", "Luxembourg",
                  "Cayman Islands", "Canada", "Belgium", "Ireland",
                  "France", "Switzerland", "Taiwan", "India", "Brazil"]
@@ -394,33 +395,57 @@ def build_nl_data():
     return df, model_info
 
 
-def fetch_tic_data():
-    """
-    재무부 slt_table5.txt 직접 파싱 (FRED 미러링 없이 최신 데이터 즉시 반영)
-    컬럼 포맷: Country | 2026-01 | 2025-12 | 2025-11 | ...
-    """
-    r = req.get(TIC_URL, timeout=30)
-    r.raise_for_status()
-    text = r.text
-
+def _parse_hist(text):
+    """mfhhis01.txt 파싱: 연도 헤더 + 12개월 컬럼 포맷"""
     records = []
-    date_cols = []  # ["2026-01", "2025-12", ...]
-
+    current_year = None
     for line in text.splitlines():
         parts = [p.strip() for p in line.split("\t")]
         parts = [p for p in parts if p]
         if not parts:
             continue
+        if parts[0] == "Country":
+            years = [p for p in parts[1:] if re.match(r"^\d{4}$", p)]
+            if years:
+                current_year = int(years[0])
+            continue
+        if current_year is None:
+            continue
+        raw_name = parts[0].strip('"').strip()
+        for country in TIC_COUNTRIES:
+            clean = country.replace('"', '').strip()
+            if raw_name == clean:
+                nums = []
+                for p in parts[1:]:
+                    try:
+                        nums.append(float(p.replace(',', '')))
+                    except ValueError:
+                        pass
+                if len(nums) >= 12:
+                    for m_idx, v in enumerate(nums[:12]):
+                        month_num = 12 - m_idx
+                        records.append({
+                            "date": pd.to_datetime(f"{current_year}-{month_num:02d}-01"),
+                            "country": clean, "value": v
+                        })
+                break
+    return records
 
-        # 헤더 행: 첫 셀이 "Country", 이후 셀이 "YYYY-MM" 형태
+
+def _parse_curr(text):
+    """slt_table5.txt 파싱: YYYY-MM 컬럼 포맷 (최근 13개월)"""
+    records = []
+    date_cols = []
+    for line in text.splitlines():
+        parts = [p.strip() for p in line.split("\t")]
+        parts = [p for p in parts if p]
+        if not parts:
+            continue
         if parts[0] == "Country":
             date_cols = [p for p in parts[1:] if re.match(r"^\d{4}-\d{2}$", p)]
             continue
-
         if not date_cols:
             continue
-
-        # 국가명 매칭
         raw_name = parts[0].strip('"').strip()
         for country in TIC_COUNTRIES:
             clean = country.replace('"', '').strip()
@@ -435,16 +460,30 @@ def fetch_tic_data():
                     if i < len(nums) and nums[i] is not None:
                         records.append({
                             "date": pd.to_datetime(date_str + "-01"),
-                            "country": clean,
-                            "value": nums[i]
+                            "country": clean, "value": nums[i]
                         })
                 break
+    return records
+
+
+def fetch_tic_data():
+    """
+    히스토리(mfhhis01) + 최신(slt_table5) 병합
+    → 2000년~현재 전체 데이터 유지하면서 최신 월 즉시 반영
+    """
+    r_hist = req.get(TIC_URL_HIST, timeout=30)
+    r_hist.raise_for_status()
+    r_curr = req.get(TIC_URL_CURR, timeout=30)
+    r_curr.raise_for_status()
+
+    records = _parse_hist(r_hist.text) + _parse_curr(r_curr.text)
 
     if not records:
-        raise ValueError("TIC 데이터 파싱 실패 — slt_table5.txt 포맷 확인 필요")
+        raise ValueError("TIC 데이터 파싱 실패")
 
     df = pd.DataFrame(records)
-    df = df.drop_duplicates(subset=["date", "country"]).sort_values("date")
+    # 중복 제거: slt_table5(최신) 데이터 우선 (sort 후 keep=last)
+    df = df.sort_values("date").drop_duplicates(subset=["date", "country"], keep="last")
     pivot = df.pivot(index="date", columns="country", values="value").sort_index()
     pivot = pivot[pivot.index >= "2000-01-01"]
     latest = pivot.index[-1].strftime("%Y-%m")
