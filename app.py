@@ -369,11 +369,13 @@ def build_nl_data():
     except Exception:
         spx_d = pd.Series(dtype=float, name="SP500")
 
-    df = pd.DataFrame({"TGA": tga_d}).sort_index()
-    df["RRP"]   = rrp_d.reindex(df.index, method="ffill")
+    # 인덱스 = RRP 일간 기준 (가장 촘촘한 시리즈)
+    # TGA(주간)/WALCL(주간)은 ffill로 채워 일간 행에 반영
+    df = pd.DataFrame({"RRP": rrp_d}).sort_index()
+    df["TGA"]   = tga_d.reindex(df.index, method="ffill")
     df["WALCL"] = walcl_w.reindex(df.index, method="ffill")
     df["SP500"] = spx_d.reindex(df.index, method="ffill")
-    df = df.dropna(subset=["TGA", "RRP", "WALCL"])
+    df = df.dropna(subset=["RRP", "WALCL", "TGA"])
     df["NL"] = df["WALCL"] - df["TGA"] - df["RRP"]
     df["NL_DoD"] = df["NL"].diff()
 
