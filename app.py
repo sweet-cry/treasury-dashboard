@@ -185,11 +185,11 @@ HTML_TEMPLATE = """
 
   <div class="chart-card">
     <div class="chart-header">
-      <div><div class="chart-title">Net Liquidity · TGA · RRP — Daily (2000–present)</div>
+      <div><div class="chart-title">WALCL 구성: Net Liquidity · TGA · RRP — Daily (2000–present)</div>
       <div class="legend">
-        <span><span style="width:18px;height:3px;background:#1f77b4;display:inline-block;"></span>Net Liquidity</span>
-        <span><span style="width:18px;border-top:2px dashed #2ca02c;display:inline-block;"></span>TGA</span>
-        <span><span style="width:18px;border-top:2px dashed #ff7f0e;display:inline-block;"></span>RRP</span>
+        <span><span style="width:14px;height:10px;background:rgba(31,119,180,0.60);border-radius:2px;display:inline-block;"></span>Net Liquidity</span>
+        <span><span style="width:14px;height:10px;background:rgba(44,160,44,0.55);border-radius:2px;display:inline-block;"></span>TGA</span>
+        <span><span style="width:14px;height:10px;background:rgba(255,127,14,0.55);border-radius:2px;display:inline-block;"></span>RRP</span>
         <span style="font-size:10px;color:#999;">음영: 경기침체</span>
       </div></div>
       <div class="zoom-btns"><button onclick="zoomChart('c1','in')">+</button><button onclick="zoomChart('c1','out')">−</button><button onclick="resetChart('c1')">↺</button></div>
@@ -239,7 +239,7 @@ HTML_TEMPLATE = """
     <div class="row"><span class="lbl">SPX 현재가</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
   </div>
 
-  <div class="section-title">최근 10일 데이터</div>
+  <div class="section-title">최근 10 영업일 데이터</div>
   <div class="tbl-wrap">
     <table>
       <thead><tr><th>날짜</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">괴리율</th></tr></thead>
@@ -520,12 +520,19 @@ def build_chart1(df):
     fig = go.Figure()
     for s, e in recession_periods:
         fig.add_vrect(x0=s, x1=e, fillcolor="rgba(180,0,0,0.07)", layer="below", line_width=0)
-    fig.add_trace(go.Scatter(x=df.index, y=df["NL"], name="Net Liquidity",
-        line=dict(color="#1f77b4", width=2), fill="tozeroy", fillcolor="rgba(31,119,180,0.10)"))
-    fig.add_trace(go.Scatter(x=df.index, y=df["TGA"], name="TGA",
-        line=dict(color="#2ca02c", width=1.5, dash="dash")))
+    # 스택 순서: RRP(바닥) → TGA(중간) → NL(상단) = WALCL 전체
     fig.add_trace(go.Scatter(x=df.index, y=df["RRP"], name="RRP",
-        line=dict(color="#ff7f0e", width=1.5, dash="dash")))
+        line=dict(color="#ff7f0e", width=0.8),
+        fill="tozeroy", fillcolor="rgba(255,127,14,0.55)",
+        stackgroup="walcl"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["TGA"], name="TGA",
+        line=dict(color="#2ca02c", width=0.8),
+        fill="tonexty", fillcolor="rgba(44,160,44,0.55)",
+        stackgroup="walcl"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["NL"], name="Net Liquidity",
+        line=dict(color="#1f77b4", width=1.5),
+        fill="tonexty", fillcolor="rgba(31,119,180,0.60)",
+        stackgroup="walcl"))
     grid = dict(showgrid=True, gridcolor="rgba(204,0,0,0.15)", gridwidth=0.5, griddash="dot",
                 linecolor="#bbb", linewidth=1, showline=True, ticks="outside", tickcolor="#bbb",
                 tickfont=dict(size=10, color="#555"))
