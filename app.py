@@ -64,63 +64,89 @@ HTML_TEMPLATE = """
   <title>Fed Dashboard</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:Arial,'Segoe UI',sans-serif;background:#f0f0f0;color:#1a1a1a;}
-    .header{background:#fff;border-bottom:2px solid #cc0000;padding:11px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-    .header h1{font-size:15px;font-weight:700;color:#333;}
-    .badge{display:inline-block;font-size:10px;background:#cc0000;color:#fff;border-radius:2px;padding:1px 6px;margin-left:8px;font-weight:700;}
-    .meta{font-size:11px;color:#666;}
-    .refresh-btn{font-size:11px;padding:5px 12px;border:1px solid #cc0000;border-radius:2px;background:transparent;cursor:pointer;color:#cc0000;}
-    .refresh-btn:hover{background:#fff0f0;}
-    .tabs{display:flex;gap:0;padding:12px 20px 0;border-bottom:2px solid #cc0000;}
-    .tab{padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;background:#f0f0f0;color:#888;border:1px solid #ddd;border-bottom:none;border-radius:2px 2px 0 0;margin-right:4px;transition:all .15s;}
-    .tab.active{background:#fff;color:#cc0000;border-bottom:2px solid #fff;margin-bottom:-2px;}
-    .tab-content{display:none;padding:16px 20px;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;background:#0c0c10;color:#e2e2e2;}
+    .header{background:#0c0c10;border-bottom:1px solid rgba(255,255,255,0.06);padding:13px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+    .header h1{font-size:14px;font-weight:500;color:#fff;display:flex;align-items:center;gap:8px;}
+    .nav-dot{width:7px;height:7px;border-radius:50%;background:#60a5fa;display:inline-block;}
+    .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:20px;border:1px solid rgba(96,165,250,0.3);color:#60a5fa;font-weight:400;}
+    .meta{font-size:11px;color:rgba(255,255,255,0.25);}
+    .refresh-btn{font-size:11px;padding:5px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.5);}
+    .refresh-btn:hover{background:rgba(255,255,255,0.06);color:#fff;}
+    .tabs{display:flex;gap:4px;padding:12px 24px 0;border-bottom:1px solid rgba(255,255,255,0.06);}
+    .tab{padding:7px 18px;font-size:12px;font-weight:400;cursor:pointer;background:transparent;color:rgba(255,255,255,0.3);border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;transition:all .15s;}
+    .tab.active{background:rgba(255,255,255,0.04);color:#fff;border-color:rgba(255,255,255,0.08);}
+    .tab-content{display:none;padding:16px 24px;}
     .tab-content.active{display:block;}
     .container{max-width:1280px;margin:0 auto;}
-    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:16px;}
-    .mc{background:#fff;border-radius:2px;padding:12px 14px;border:1px solid #ddd;border-top:3px solid #cc0000;}
-    .mc-lbl{font-size:10px;color:#777;margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
-    .mc-val{font-size:19px;font-weight:700;color:#111;font-family:'Courier New',monospace;}
-    .mc-sub{font-size:11px;margin-top:3px;}
-    .pos{color:#2ca02c;}.neg{color:#d62728;}.neu{color:#888;}
-    .chart-card{background:#fff;border:1px solid #ddd;border-radius:2px;overflow:hidden;margin-bottom:12px;}
-    .chart-header{padding:10px 12px;border-bottom:2px solid #cc0000;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
-    .chart-title{font-size:12px;font-weight:700;color:#333;margin-bottom:5px;}
-    .legend{display:flex;gap:12px;font-size:11px;color:#444;flex-wrap:wrap;}
-    .legend span{display:flex;align-items:center;gap:4px;}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:14px;}
+    .mc{background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.07);}
+    .mc-lbl{font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;}
+    .mc-val{font-size:20px;font-weight:500;color:#fff;letter-spacing:-0.5px;}
+    .mc-sub{font-size:11px;margin-top:4px;}
+    .pos{color:#34d399;}.neg{color:#f87171;}.neu{color:rgba(255,255,255,0.3);}
+    .chart-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;margin-bottom:12px;}
+    .chart-header{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
+    .chart-title{font-size:12px;font-weight:500;color:rgba(255,255,255,0.7);margin-bottom:5px;}
+    .legend{display:flex;gap:12px;font-size:11px;color:rgba(255,255,255,0.35);flex-wrap:wrap;}
+    .legend span{display:flex;align-items:center;gap:5px;}
+    .src-link{font-size:10px;color:#60a5fa;text-decoration:none;opacity:0.7;margin-left:8px;}
+    .src-link:hover{opacity:1;}
     .zoom-btns{display:flex;gap:4px;}
-    .zoom-btns button{font-size:11px;padding:3px 9px;border:1px solid #ddd;border-radius:2px;background:#f8f8f8;cursor:pointer;color:#555;}
-    .zoom-btns button:hover{background:#fff0f0;color:#cc0000;}
-    .section-title{font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-left:2px;}
-    .method-box{background:#fff;border:1px solid #ddd;border-left:4px solid #cc0000;border-radius:2px;padding:16px 18px;margin-bottom:12px;font-size:12px;line-height:1.7;}
-    .method-box h3{font-size:12px;font-weight:700;color:#cc0000;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;}
-    .method-box .formula{font-family:'Courier New',monospace;background:#f8f8f8;border:1px solid #eee;padding:8px 12px;border-radius:2px;margin:6px 0;font-size:12px;color:#333;}
-    .method-box .desc{color:#555;margin:4px 0;}
-    .method-box .warn{color:#888;font-size:11px;margin-top:8px;padding-top:8px;border-top:1px dashed #ddd;}
-    .model-info{background:#f8f8f8;border:1px solid #eee;border-radius:2px;padding:8px 12px;margin-top:8px;font-family:'Courier New',monospace;font-size:11px;color:#555;}
-    .tbl-wrap{background:#fff;border:1px solid #ddd;border-radius:2px;overflow-x:auto;margin-bottom:12px;}
-    table{width:100%;border-collapse:collapse;font-size:12px;font-family:'Courier New',monospace;}
-    thead tr{background:#cc0000;color:#fff;}
-    thead th{padding:8px 12px;text-align:right;font-weight:700;font-size:11px;white-space:nowrap;}
+    .zoom-btns button{font-size:11px;padding:3px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.4);}
+    .zoom-btns button:hover{background:rgba(255,255,255,0.06);color:#fff;}
+    .section-title{font-size:10px;font-weight:500;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;padding-left:2px;display:flex;justify-content:space-between;align-items:center;}
+    .method-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-left:3px solid rgba(96,165,250,0.4);border-radius:0 10px 10px 0;padding:16px 18px;margin-bottom:12px;font-size:12px;line-height:1.7;}
+    .method-box h3{font-size:11px;font-weight:500;color:#60a5fa;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;}
+    .method-box .formula{font-family:'SF Mono','Courier New',monospace;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);padding:8px 12px;border-radius:6px;margin:6px 0;font-size:12px;color:rgba(255,255,255,0.7);}
+    .method-box .desc{color:rgba(255,255,255,0.45);margin:4px 0;}
+    .method-box .warn{color:rgba(255,255,255,0.25);font-size:11px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);}
+    .model-info{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:8px 12px;margin-top:8px;font-family:'SF Mono','Courier New',monospace;font-size:11px;color:rgba(255,255,255,0.35);}
+    .tbl-wrap{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow-x:auto;margin-bottom:12px;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    thead tr{background:rgba(255,255,255,0.04);}
+    thead th{padding:9px 12px;text-align:right;font-weight:500;font-size:10px;white-space:nowrap;color:rgba(255,255,255,0.3);letter-spacing:0.05em;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,0.06);}
     thead th:first-child,thead th:nth-child(2){text-align:left;}
-    tbody tr:nth-child(even){background:#f9f9f9;}
-    tbody tr:hover{background:#fff3f3;}
-    tbody td{padding:7px 12px;text-align:right;border-bottom:1px solid #eee;white-space:nowrap;}
-    tbody td:first-child,tbody td:nth-child(2){text-align:left;color:#555;}
-    .badge-up{background:#e8f5e9;color:#2ca02c;padding:1px 5px;border-radius:2px;font-size:11px;}
-    .badge-dn{background:#fff0f0;color:#d62728;padding:1px 5px;border-radius:2px;font-size:11px;}
-    .summary-box{background:#fff;border:1px solid #ddd;border-top:3px solid #cc0000;border-radius:2px;padding:14px 18px;margin-bottom:12px;font-family:'Courier New',monospace;font-size:12px;}
-    .summary-box .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;}
+    tbody tr:hover{background:rgba(255,255,255,0.02);}
+    tbody td{padding:7px 12px;text-align:right;border-bottom:1px solid rgba(255,255,255,0.04);white-space:nowrap;color:rgba(255,255,255,0.5);}
+    tbody td:first-child,tbody td:nth-child(2){text-align:left;color:rgba(255,255,255,0.4);}
+    .badge-up{background:rgba(52,211,153,0.1);color:#34d399;padding:2px 6px;border-radius:4px;font-size:11px;}
+    .badge-dn{background:rgba(248,113,113,0.1);color:#f87171;padding:2px 6px;border-radius:4px;font-size:11px;}
+    .summary-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px 18px;margin-bottom:12px;font-size:12px;}
+    .summary-box .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
     .summary-box .row:last-child{border-bottom:none;}
-    .summary-box .lbl{color:#666;}
-    .summary-box .val{font-weight:700;color:#111;}
-    .divider{border:none;border-top:2px solid #cc0000;margin:4px 0 10px;}
+    .summary-box .lbl{color:rgba(255,255,255,0.35);}
+    .summary-box .val{font-weight:500;color:#fff;}
+    .divider{border:none;border-top:1px solid rgba(255,255,255,0.06);margin:4px 0 10px;}
     .bar-cell{display:flex;align-items:center;gap:6px;justify-content:flex-end;}
-    .bar{height:8px;border-radius:2px;display:inline-block;}
-    .info-box{background:#fff;border:1px solid #ddd;border-left:4px solid #cc0000;border-radius:2px;padding:12px 16px;font-size:12px;line-height:1.7;color:#555;margin-bottom:12px;}
-    .error{background:#fff0f0;border:1px solid #cc0000;border-radius:2px;padding:14px;color:#cc0000;margin-bottom:12px;font-size:13px;}
-    .loading{text-align:center;padding:60px;color:#888;font-size:14px;}
-    .footer{font-size:10px;color:#aaa;text-align:center;padding:10px;border-top:1px solid #ddd;margin-top:4px;}
+    .bar{height:6px;border-radius:3px;display:inline-block;opacity:0.7;}
+    .info-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-left:3px solid rgba(96,165,250,0.3);border-radius:0 10px 10px 0;padding:12px 16px;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.4);margin-bottom:12px;}
+    .error{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:14px;color:#f87171;margin-bottom:12px;font-size:13px;}
+    .loading{text-align:center;padding:60px;color:rgba(255,255,255,0.25);font-size:14px;}
+    .footer{font-size:10px;color:rgba(255,255,255,0.15);text-align:center;padding:12px;border-top:1px solid rgba(255,255,255,0.05);margin-top:4px;}
+    /* DTS 섹션 */
+    .dts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+    .dts-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px 16px;}
+    .dts-hd{font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+    .dts-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+    .dts-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+    .dts-row:last-child{border-bottom:none;}
+    .dts-name{font-size:12px;color:rgba(255,255,255,0.4);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;}
+    .dts-amt{font-size:12px;font-weight:500;white-space:nowrap;}
+    .c-in{color:#34d399;}.c-out{color:#f87171;}
+    /* 캘린더 */
+    .cal-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;}
+    .cal-m{background:rgba(255,255,255,0.025);border-radius:8px;padding:9px 10px;border:1px solid rgba(255,255,255,0.05);}
+    .cal-m.hl-red{border-color:rgba(248,113,113,0.3);}
+    .cal-m.hl-green{border-color:rgba(52,211,153,0.2);}
+    .cal-mn{font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:6px;font-weight:500;}
+    .cal-mn.red{color:#f87171;}.cal-mn.green{color:#34d399;}
+    .cal-ev{font-size:10px;padding:2px 6px;border-radius:4px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+    .ev-out{background:rgba(248,113,113,0.1);color:#f87171;}
+    .ev-in{background:rgba(52,211,153,0.1);color:#34d399;}
+    .ev-neu{background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.28);}
+    .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
+    .cal-legend span{display:flex;align-items:center;gap:5px;}
+    .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
   </style>
   <script>
     window.onload=function(){
@@ -153,10 +179,10 @@ HTML_TEMPLATE = """
 </head>
 <body>
 <div class="header">
-  <h1>Federal Reserve Dashboard <span class="badge">LIVE</span></h1>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-    <span class="meta">Updated: {{ updated_at }}</span>
-    <button class="refresh-btn" onclick="manualRefresh()">Refresh</button>
+  <h1><span class="nav-dot"></span> Fed Dashboard <span class="badge">● Live</span></h1>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <span class="meta" id="cd">Updated: {{ updated_at }}</span>
+    <button class="refresh-btn" onclick="manualRefresh()">↻ Refresh</button>
   </div>
 </div>
 
@@ -184,12 +210,14 @@ HTML_TEMPLATE = """
 
   <div class="chart-card">
     <div class="chart-header">
-      <div><div class="chart-title">WALCL 구성: Net Liquidity · TGA · RRP — Daily (2000–present)</div>
+      <div><div class="chart-title">WALCL 구성: Net Liquidity · TGA · RRP — Daily (2000–present)
+        <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED ↗</a>
+      </div>
       <div class="legend">
-        <span><span style="width:14px;height:10px;background:rgba(31,119,180,0.60);border-radius:2px;display:inline-block;"></span>Net Liquidity</span>
-        <span><span style="width:14px;height:10px;background:rgba(44,160,44,0.55);border-radius:2px;display:inline-block;"></span>TGA</span>
-        <span><span style="width:14px;height:10px;background:rgba(255,127,14,0.55);border-radius:2px;display:inline-block;"></span>RRP</span>
-        <span style="font-size:10px;color:#999;">음영: 경기침체</span>
+        <span><span style="width:12px;height:8px;background:rgba(96,165,250,0.6);border-radius:2px;display:inline-block;"></span>Net Liquidity</span>
+        <span><span style="width:12px;height:8px;background:rgba(52,211,153,0.55);border-radius:2px;display:inline-block;"></span>TGA</span>
+        <span><span style="width:12px;height:8px;background:rgba(251,191,36,0.55);border-radius:2px;display:inline-block;"></span>RRP</span>
+        <span style="font-size:10px;color:rgba(255,255,255,0.2);">음영: 경기침체</span>
       </div></div>
       <div class="zoom-btns"><button onclick="zoomChart('c1','in')">+</button><button onclick="zoomChart('c1','out')">−</button><button onclick="resetChart('c1')">↺</button></div>
     </div>
@@ -198,14 +226,66 @@ HTML_TEMPLATE = """
 
   <div class="chart-card">
     <div class="chart-header">
-      <div><div class="chart-title">S&P 500 vs NL Regression FV — Daily (2000–present)</div>
+      <div><div class="chart-title">S&P 500 vs NL Regression FV — Daily (2000–present)
+        <a class="src-link" href="https://fred.stlouisfed.org/series/SP500" target="_blank">FRED ↗</a>
+      </div>
       <div class="legend">
-        <span><span style="width:18px;height:3px;background:#333;display:inline-block;"></span>S&P 500</span>
-        <span><span style="width:18px;height:2px;border-top:2px solid #1f77b4;display:inline-block;"></span>NL 회귀 FV</span>
+        <span><span style="width:16px;height:2px;background:#e2e2e2;display:inline-block;"></span>S&P 500</span>
+        <span><span style="width:16px;height:2px;border-top:2px dashed #60a5fa;display:inline-block;"></span>NL 회귀 FV</span>
       </div></div>
       <div class="zoom-btns"><button onclick="zoomChart('c2','in')">+</button><button onclick="zoomChart('c2','out')">−</button><button onclick="resetChart('c2')">↺</button></div>
     </div>
     <div id="c2" style="padding:4px;">{{ chart2_html | safe }}</div>
+  </div>
+
+  <div class="section-title">TGA 사용처 · DTS 일일 내역
+    <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata.treasury.gov ↗</a>
+  </div>
+  <div class="dts-grid">
+    <div class="dts-card">
+      <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 항목 (Table II)
+        <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
+      </div>
+      <div class="dts-row"><span class="dts-name">Federal Tax Deposits</span><span class="dts-amt c-in">실시간 연동 예정</span></div>
+      <div class="dts-row"><span class="dts-name">Public Debt Issues</span><span class="dts-amt c-in">—</span></div>
+      <div class="dts-row"><span class="dts-name">GSE Mortgage Proceeds</span><span class="dts-amt c-in">—</span></div>
+      <div class="dts-row"><span class="dts-name">Other Deposits</span><span class="dts-amt c-in">—</span></div>
+    </div>
+    <div class="dts-card">
+      <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 항목 (Table II)
+        <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
+      </div>
+      <div class="dts-row"><span class="dts-name">Social Security Benefits</span><span class="dts-amt c-out">실시간 연동 예정</span></div>
+      <div class="dts-row"><span class="dts-name">Dept of Defense</span><span class="dts-amt c-out">—</span></div>
+      <div class="dts-row"><span class="dts-name">Income Tax Refunds</span><span class="dts-amt c-out">—</span></div>
+      <div class="dts-row"><span class="dts-name">Interest on Debt</span><span class="dts-amt c-out">—</span></div>
+      <div class="dts-row"><span class="dts-name">Dept of Health</span><span class="dts-amt c-out">—</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">재정 이벤트 캘린더 · 시장 유동성 기준
+    <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ↗</a>
+  </div>
+  <div class="chart-card" style="padding:14px 16px;margin-bottom:12px;">
+    <div class="cal-legend">
+      <span><span class="cal-legend-dot" style="background:#34d399;"></span>유동성 유입 (환급·정부지출)</span>
+      <span><span class="cal-legend-dot" style="background:#f87171;"></span>유동성 유출 (세금납부)</span>
+      <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>중립/발표</span>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-m"><div class="cal-mn">1월</div><span class="cal-ev ev-out">추정세 납부</span><span class="cal-ev ev-neu">IRS 개시</span></div>
+      <div class="cal-m"><div class="cal-mn">2월</div><span class="cal-ev ev-in">환급 피크↑</span><span class="cal-ev ev-in">EITC·CTC↑</span></div>
+      <div class="cal-m"><div class="cal-mn">3월</div><span class="cal-ev ev-in">환급 지속↑</span><span class="cal-ev ev-neu">S·Corp 신고</span></div>
+      <div class="cal-m hl-red"><div class="cal-mn red">4월 ★</div><span class="cal-ev ev-out">Tax Day↓↓</span><span class="cal-ev ev-out">1Q 추정세↓</span></div>
+      <div class="cal-m"><div class="cal-mn">5월</div><span class="cal-ev ev-in">잔여환급↑</span><span class="cal-ev ev-neu">Form 990</span></div>
+      <div class="cal-m"><div class="cal-mn">6월</div><span class="cal-ev ev-out">2Q 추정세↓</span><span class="cal-ev ev-in">정부지출↑</span></div>
+      <div class="cal-m"><div class="cal-mn">7월</div><span class="cal-ev ev-in">사회보장↑</span><span class="cal-ev ev-in">여름지출↑</span></div>
+      <div class="cal-m"><div class="cal-mn">8월</div><span class="cal-ev ev-out">T-Bill↓</span><span class="cal-ev ev-neu">QRA발표</span></div>
+      <div class="cal-m"><div class="cal-mn">9월</div><span class="cal-ev ev-out">3Q 추정세↓</span><span class="cal-ev ev-in">회계마감↑</span></div>
+      <div class="cal-m"><div class="cal-mn">10월</div><span class="cal-ev ev-neu">새 회계연도</span><span class="cal-ev ev-neu">연장마감</span></div>
+      <div class="cal-m"><div class="cal-mn">11월</div><span class="cal-ev ev-in">연말지출↑</span><span class="cal-ev ev-in">사회보장↑</span></div>
+      <div class="cal-m hl-green"><div class="cal-mn green">12월 ★</div><span class="cal-ev ev-in">지출피크↑↑</span><span class="cal-ev ev-out">연말납부↓</span></div>
+    </div>
   </div>
 
   <div class="section-title">계산 방법론</div>
@@ -269,10 +349,12 @@ HTML_TEMPLATE = """
   <div class="chart-card">
     <div class="chart-header">
       <div>
-        <div class="chart-title">주요국 미국채 보유량 — Monthly (2000–present)</div>
+        <div class="chart-title">주요국 미국채 보유량 — Monthly (2000–present)
+          <a class="src-link" href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank">TIC ↗</a>
+        </div>
         <div class="legend">
           {% for c in tic_legend %}
-          <span><span style="width:18px;height:3px;background:{{ c.color }};display:inline-block;"></span>{{ c.name }}</span>
+          <span><span style="width:16px;height:2px;background:{{ c.color }};display:inline-block;"></span>{{ c.name }}</span>
           {% endfor %}
         </div>
       </div>
@@ -281,7 +363,7 @@ HTML_TEMPLATE = """
     <div id="ctic" style="padding:4px;">{{ tic_chart_html | safe }}</div>
   </div>
 
-  <div class="section-title">최신 보유량 순위 <span style="font-weight:400;color:#999;font-size:10px;">{{ tic_updated_at }} 기준 · 약 6주 후행 발표</span></div>
+  <div class="section-title">최신 보유량 순위 <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ tic_updated_at }} 기준 · 약 6주 후행 발표</span></div>
   <div class="tbl-wrap">
     <table>
       <thead><tr><th>#</th><th>국가</th><th style="text-align:right;">보유량 (B)</th><th style="text-align:right;">전월比</th><th style="text-align:right;">비중</th></tr></thead>
@@ -319,7 +401,9 @@ HTML_TEMPLATE = """
 </div>
 
   <div class="footer">
-    Net Liquidity: FRED (WALCL·WDTGAL·RRPONTSYD·SP500) &nbsp;|&nbsp; 국가별 미국채: U.S. Treasury TIC &nbsp;|&nbsp; 2000–present
+    Net Liquidity: <a href="https://fred.stlouisfed.org" target="_blank" style="color:#60a5fa;text-decoration:none;">FRED</a> (WALCL·WDTGAL·RRPONTSYD·SP500) &nbsp;|&nbsp;
+    TGA 사용처: <a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" style="color:#60a5fa;text-decoration:none;">fiscaldata.treasury.gov</a> &nbsp;|&nbsp;
+    국가별 미국채: <a href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank" style="color:#60a5fa;text-decoration:none;">U.S. Treasury TIC</a> &nbsp;|&nbsp; 2000–present
   </div>
 </div>
 </body>
@@ -558,53 +642,73 @@ def build_chart1(df):
     recession_periods = [("2001-03-01","2001-11-01"),("2007-12-01","2009-06-01"),("2020-02-01","2020-04-01")]
     fig = go.Figure()
     for s, e in recession_periods:
-        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(180,0,0,0.07)", layer="below", line_width=0)
+        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(255,255,255,0.04)", layer="below", line_width=0)
     # 스택 순서: RRP(바닥) → TGA(중간) → NL(상단) = WALCL 전체
     fig.add_trace(go.Scatter(x=df.index, y=df["RRP"], name="RRP",
-        line=dict(color="#ff7f0e", width=0.8),
-        fill="tozeroy", fillcolor="rgba(255,127,14,0.55)",
+        line=dict(color="#fbbf24", width=0.8),
+        fill="tozeroy", fillcolor="rgba(251,191,36,0.4)",
         stackgroup="walcl"))
     fig.add_trace(go.Scatter(x=df.index, y=df["TGA"], name="TGA",
-        line=dict(color="#2ca02c", width=0.8),
-        fill="tonexty", fillcolor="rgba(44,160,44,0.55)",
+        line=dict(color="#34d399", width=0.8),
+        fill="tonexty", fillcolor="rgba(52,211,153,0.4)",
         stackgroup="walcl"))
     fig.add_trace(go.Scatter(x=df.index, y=df["NL"], name="Net Liquidity",
-        line=dict(color="#1f77b4", width=1.5),
-        fill="tonexty", fillcolor="rgba(31,119,180,0.60)",
+        line=dict(color="#60a5fa", width=1.5),
+        fill="tonexty", fillcolor="rgba(96,165,250,0.5)",
         stackgroup="walcl"))
-    grid = dict(showgrid=True, gridcolor="rgba(204,0,0,0.15)", gridwidth=0.5, griddash="dot",
-                linecolor="#bbb", linewidth=1, showline=True, ticks="outside", tickcolor="#bbb",
-                tickfont=dict(size=10, color="#555"))
-    fig.update_layout(height=320, plot_bgcolor="#e8e8e8", paper_bgcolor="#ffffff",
-        font=dict(family="Arial,sans-serif", size=11, color="#333"),
+    grid = dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", gridwidth=0.5, griddash="dot",
+                linecolor="rgba(255,255,255,0.08)", linewidth=1, showline=True, ticks="outside", tickcolor="rgba(255,255,255,0.1)",
+                tickfont=dict(size=10, color="rgba(255,255,255,0.35)"))
+    fig.update_layout(height=320, plot_bgcolor="rgba(255,255,255,0.02)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="-apple-system,BlinkMacSystemFont,sans-serif", size=11, color="rgba(255,255,255,0.5)"),
         hovermode="x unified", margin=dict(t=10, b=40, l=70, r=20), showlegend=False)
     fig.update_xaxes(**grid)
-    fig.update_yaxes(**grid, title_text="Billions USD", title_font=dict(size=10, color="#555"),
+    fig.update_yaxes(**grid, title_text="Billions USD", title_font=dict(size=10, color="rgba(255,255,255,0.3)"),
                      tickformat=",", ticksuffix="B")
     return fig.to_html(include_plotlyjs="cdn", full_html=False, config={"displayModeBar": False})
 
 
 def build_chart2(df):
     recession_periods = [("2001-03-01","2001-11-01"),("2007-12-01","2009-06-01"),("2020-02-01","2020-04-01")]
+    fiscal_events = [
+        {"month": 2,  "label": "환급 피크", "color": "rgba(52,211,153,0.5)"},
+        {"month": 3,  "label": "환급 피크", "color": "rgba(52,211,153,0.5)"},
+        {"month": 4,  "label": "Tax Day",   "color": "rgba(248,113,113,0.6)"},
+        {"month": 6,  "label": "2Q 추정세", "color": "rgba(251,191,36,0.5)"},
+        {"month": 9,  "label": "3Q 추정세", "color": "rgba(251,191,36,0.5)"},
+        {"month": 1,  "label": "4Q 추정세", "color": "rgba(251,191,36,0.5)"},
+    ]
     fig = go.Figure()
     for s, e in recession_periods:
-        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(180,0,0,0.07)", layer="below", line_width=0)
+        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(255,255,255,0.03)", layer="below", line_width=0)
+    # 재정 이벤트 오버레이 (최근 3년치만)
+    years = list(range(df.index[-1].year - 2, df.index[-1].year + 1))
+    for yr in years:
+        for ev in fiscal_events:
+            try:
+                x_date = f"{yr}-{ev['month']:02d}-15"
+                fig.add_vline(x=x_date, line_width=1, line_dash="dot", line_color=ev["color"],
+                              annotation_text=ev["label"] if yr == years[-1] else "",
+                              annotation_font_size=9, annotation_font_color=ev["color"],
+                              annotation_position="top left")
+            except Exception:
+                pass
     fig.add_trace(go.Scatter(x=df.index, y=df["SP500"], name="S&P 500",
-        line=dict(color="#333333", width=2)))
+        line=dict(color="#e2e2e2", width=2)))
     if "FV_NL" in df.columns and df["FV_NL"].notna().any():
         fig.add_trace(go.Scatter(x=df.index, y=df["FV_NL"], name="NL 회귀 FV",
-            line=dict(color="#1f77b4", width=1.5)))
+            line=dict(color="#60a5fa", width=1.5, dash="dot")))
     spx_vals = df["SP500"].dropna()
     spx_min = int(spx_vals.min() * 0.9) if len(spx_vals) else 500
     spx_max = int(spx_vals.max() * 1.05) if len(spx_vals) else 7500
-    grid = dict(showgrid=True, gridcolor="rgba(204,0,0,0.15)", gridwidth=0.5, griddash="dot",
-                linecolor="#bbb", linewidth=1, showline=True, ticks="outside", tickcolor="#bbb",
-                tickfont=dict(size=10, color="#555"))
-    fig.update_layout(height=320, plot_bgcolor="#e8e8e8", paper_bgcolor="#ffffff",
-        font=dict(family="Arial,sans-serif", size=11, color="#333"),
+    grid = dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", gridwidth=0.5, griddash="dot",
+                linecolor="rgba(255,255,255,0.08)", linewidth=1, showline=True, ticks="outside", tickcolor="rgba(255,255,255,0.1)",
+                tickfont=dict(size=10, color="rgba(255,255,255,0.35)"))
+    fig.update_layout(height=320, plot_bgcolor="rgba(255,255,255,0.02)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="-apple-system,BlinkMacSystemFont,sans-serif", size=11, color="rgba(255,255,255,0.5)"),
         hovermode="x unified", margin=dict(t=10, b=40, l=70, r=20), showlegend=False)
     fig.update_xaxes(**grid)
-    fig.update_yaxes(**grid, title_text="Index Level", title_font=dict(size=10, color="#555"),
+    fig.update_yaxes(**grid, title_text="Index Level", title_font=dict(size=10, color="rgba(255,255,255,0.3)"),
                      tickformat=",", range=[spx_min, spx_max])
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
@@ -613,7 +717,7 @@ def build_tic_chart(pivot):
     recession_periods = [("2001-03-01","2001-11-01"),("2007-12-01","2009-06-01"),("2020-02-01","2020-04-01")]
     fig = go.Figure()
     for s, e in recession_periods:
-        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(180,0,0,0.07)", layer="below", line_width=0)
+        fig.add_vrect(x0=s, x1=e, fillcolor="rgba(255,255,255,0.04)", layer="below", line_width=0)
     for country in TIC_COUNTRIES:
         clean = country.replace('"','')
         if clean not in pivot.columns:
@@ -622,14 +726,14 @@ def build_tic_chart(pivot):
         dash = "dash" if clean in ["Luxembourg","Cayman Islands","Canada","Belgium"] else "solid"
         fig.add_trace(go.Scatter(x=pivot.index, y=pivot[clean], name=clean,
             line=dict(color=color, width=1.8, dash=dash)))
-    grid = dict(showgrid=True, gridcolor="rgba(204,0,0,0.15)", gridwidth=0.5, griddash="dot",
-                linecolor="#bbb", linewidth=1, showline=True, ticks="outside", tickcolor="#bbb",
-                tickfont=dict(size=10, color="#555"))
-    fig.update_layout(height=380, plot_bgcolor="#e8e8e8", paper_bgcolor="#ffffff",
-        font=dict(family="Arial,sans-serif", size=11, color="#333"),
+    grid = dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", gridwidth=0.5, griddash="dot",
+                linecolor="rgba(255,255,255,0.08)", linewidth=1, showline=True, ticks="outside", tickcolor="rgba(255,255,255,0.1)",
+                tickfont=dict(size=10, color="rgba(255,255,255,0.35)"))
+    fig.update_layout(height=380, plot_bgcolor="rgba(255,255,255,0.02)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="-apple-system,BlinkMacSystemFont,sans-serif", size=11, color="rgba(255,255,255,0.5)"),
         hovermode="x unified", margin=dict(t=10, b=40, l=70, r=20), showlegend=False)
     fig.update_xaxes(**grid)
-    fig.update_yaxes(**grid, title_text="Billions USD", title_font=dict(size=10, color="#555"), tickformat=",")
+    fig.update_yaxes(**grid, title_text="Billions USD", title_font=dict(size=10, color="rgba(255,255,255,0.3)"), tickformat=",")
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
 
