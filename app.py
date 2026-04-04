@@ -711,18 +711,18 @@ def fmt_mil(v):
 
 def fetch_dts_data():
     """
-    Fiscal Data API → DTS Table I (잔액) + Table II (입출금)
+    Fiscal Data API → DTS Table II (입출금) + Table I (잔액)
+    베이스 URL: https://api.fiscaldata.treasury.gov/services/api/fiscal_service/
     단위: 백만 달러 (Millions of dollars)
     """
-    base = "https://fiscaldata.treasury.gov/api/v1"
+    base = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1"
     EXCLUDE_CATG = {"Total Deposits", "Total Withdrawals", "Total",
                     "Subtotal", "Grand Total", ""}
 
-    # ── Table II: 입출금 ──
+    # ── Table II: 입출금 (deposits_withdrawals_operating_cash) ──
     url_t2 = (
-        f"{base}/accounting/dts/deposits-withdrawals-operating-cash"
+        f"{base}/accounting/dts/deposits_withdrawals_operating_cash"
         f"?fields=record_date,transaction_catg,transaction_type,transaction_today_amt"
-        f"&filter=transaction_type:in:(D,W)"
         f"&sort=-record_date"
         f"&page[size]=300"
     )
@@ -738,13 +738,14 @@ def fetch_dts_data():
     deposits, withdrawals = {}, {}
     for d in day_data:
         catg = d.get("transaction_catg", "").strip()
+        ttype = d.get("transaction_type", "").strip()
         try:
             amt = float((d.get("transaction_today_amt") or "0").replace(",", ""))
         except Exception:
             amt = 0.0
-        if d["transaction_type"] == "D":
+        if ttype == "D":
             deposits[catg] = deposits.get(catg, 0) + amt
-        else:
+        elif ttype == "W":
             withdrawals[catg] = withdrawals.get(catg, 0) + amt
 
     dep_sorted = sorted(
@@ -759,9 +760,9 @@ def fetch_dts_data():
     dep_list = [{"name": k, "amt": fmt_mil(v)} for k, v in dep_sorted]
     wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
 
-    # ── Table I: TGA 잔액 ──
+    # ── Table I: TGA 잔액 (dts_table_1) ──
     url_t1 = (
-        f"{base}/accounting/dts/operating-cash-balance"
+        f"{base}/accounting/dts/dts_table_1"
         f"?fields=record_date,account_type,open_today_bal,close_today_bal"
         f"&sort=-record_date"
         f"&page[size]=30"
@@ -784,7 +785,7 @@ def fetch_dts_data():
         except Exception:
             chg = open_b = close_b = 0.0
         balance_list.append({
-            "name": f"{acct}",
+            "name": acct,
             "amt": f"{'▲' if chg >= 0 else '▼'} {fmt_mil(abs(chg))}  ({fmt_mil(open_b)} → {fmt_mil(close_b)})",
             "pos": chg >= 0,
         })
