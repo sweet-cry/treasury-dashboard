@@ -772,43 +772,17 @@ def fetch_dts_data():
     dep_list = [{"name": k, "amt": fmt_mil(v)} for k, v in dep_sorted]
     wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
 
-    # ── Table I: TGA 잔액 — Table II 합계 행에서 추출 ──
-    # 디버그: 실제 transaction_catg 값 출력
-    all_catgs = sorted(set(d.get("transaction_catg", "") for d in day_data))
-    print(f"[DTS DEBUG] 최신날짜={latest_date}, 전체 catg 목록:")
-    for c in all_catgs:
-        print(f"  catg: {repr(c)}")
-    # Table II에 "Total TGA Deposits", "Total TGA Withdrawals", TGA Opening/Closing 행이 포함됨
-    SUMMARY_KEYWORDS = [
-        "Treasury General Account (TGA) Opening",
-        "Total TGA Deposits",
-        "Total TGA Withdrawals",
-        "Treasury General Account (TGA) Closing",
-        "Treasury General Account Total",
+    # ── TGA 당일 입출금 요약: 직접 계산 ──
+    total_dep = sum(deposits.values())
+    total_wit = sum(withdrawals.values())
+    net = total_dep - total_wit
+    balance_list = [
+        {"name": "총 입금 (Total Deposits)",    "amt": fmt_mil(total_dep), "pos": True},
+        {"name": "총 출금 (Total Withdrawals)", "amt": fmt_mil(total_wit), "pos": False},
+        {"name": f"당일 순변동 ({'유입' if net>=0 else '유출'})", "amt": fmt_mil(abs(net)), "pos": net >= 0},
     ]
-    balance_list = []
-    for d in day_data:
-        catg = d.get("transaction_catg", "").strip()
-        if not any(kw.lower() in catg.lower() for kw in SUMMARY_KEYWORDS):
-            continue
-        try:
-            amt = float((d.get("transaction_today_amt") or "0").replace(",", ""))
-        except Exception:
-            amt = 0.0
-        # Opening은 양수, Withdrawals는 음수로 표시
-        is_withdrawal = "Withdrawal" in catg or "(-)" in catg
-        is_opening = "Opening" in catg
-        label = catg.replace("Treasury General Account (TGA) ", "TGA ").replace("Treasury General Account ", "TGA ")
-        balance_list.append({
-            "name": label,
-            "amt": fmt_mil(abs(amt)),
-            "pos": not is_withdrawal,
-        })
-    # 중복 제거 (catg 기준)
-    seen = set()
-    balance_list = [x for x in balance_list if x["name"] not in seen and not seen.add(x["name"])]
 
-    print(f"DTS 완료: {latest_date}, 입금{len(dep_list)}건 출금{len(wit_list)}건")
+    print(f"DTS 완료: {latest_date}, 입금{len(dep_list)}건 출금{len(wit_list)}건 net={fmt_mil(net)}")
     return dep_list, wit_list, balance_list, latest_date
 
 
