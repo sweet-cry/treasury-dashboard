@@ -283,7 +283,7 @@ HTML_TEMPLATE = """
     </div>
   </div>
   <div class="dts-card" style="margin-bottom:12px;">
-    <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 잔액 변동 (Table I — 당일 순변동)
+    <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 잔액 현황 (Table I — 당일 종가 기준)
       <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">↗</a>
     </div>
     {% for item in dts_balance %}
@@ -773,34 +773,51 @@ def fetch_dts_data():
     wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
 
     # ── Table I: TGA 잔액 (operating_cash_balance) ──
+    # 필드: record_date, account_type, close_today_bal, open_today_bal, mtd_bal, fytd_bal
     url_t1 = (
         f"{base}/accounting/dts/operating_cash_balance"
-        f"?fields=record_date,account_type,open_today_bal,close_today_bal"
-        f"&sort=-record_date"
-        f"&page[size]=30"
+        f"?sort=-record_date"
+        f"&page[size]=20"
     )
     r1 = req.get(url_t1, timeout=30)
     r1.raise_for_status()
     data1 = r1.json().get("data", [])
 
+    # 최신 날짜 기준 필터 (T2 날짜와 다를 수 있으므로 별도 추출)
+    t1_dates = sorted(set(d["record_date"] for d in data1), reverse=True)
+    t1_latest = t1_dates[0] if t1_dates else latest_date
+    day1 = [d for d in data1 if d["record_date"] == t1_latest]
+
     balance_list = []
-    for d in data1:
-        if d["record_date"] != latest_date:
-            continue
+    for d in day1:
         acct = d.get("account_type", "").strip()
         if not acct:
             continue
-        try:
-            open_b = float((d.get("open_today_bal") or "0").replace(",", ""))
-            close_b = float((d.get("close_today_bal") or "0").replace(",", ""))
+        # API 실제 필드: close_today_bal, open_today_bal (없으면 mtd/fytd로 대체)
+        raw_keys = list(d.keys())
+        def _get_amt(keys_priority):
+            for k in keys_priority:
+                v = d.get(k)
+                if v and v not in ("null", "", None):
+                    try:
+                        return float(str(v).replace(",", ""))
+                    except Exception:
+                        pass
+            return None
+
+        close_b = _get_amt(["close_today_bal", "closing_balance_today", "mtd_bal"])
+        open_b  = _get_amt(["open_today_bal",  "opening_balance_today"])
+
+        if close_b is None:
+            continue
+        if open_b is not None and open_b != 0:
             chg = close_b - open_b
-        except Exception:
-            chg = open_b = close_b = 0.0
-        balance_list.append({
-            "name": acct,
-            "amt": f"{'▲' if chg >= 0 else '▼'} {fmt_mil(abs(chg))}  ({fmt_mil(open_b)} → {fmt_mil(close_b)})",
-            "pos": chg >= 0,
-        })
+            amt_str = f"{'▲' if chg >= 0 else '▼'} {fmt_mil(abs(chg))}  ({fmt_mil(open_b)} → {fmt_mil(close_b)})"
+            pos = chg >= 0
+        else:
+            amt_str = fmt_mil(close_b)
+            pos = close_b >= 0
+        balance_list.append({"name": acct, "amt": amt_str, "pos": pos})
 
     print(f"DTS 완료: {latest_date}, 입금{len(dep_list)}건 출금{len(wit_list)}건")
     return dep_list, wit_list, balance_list, latest_date
