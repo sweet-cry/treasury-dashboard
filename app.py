@@ -152,25 +152,16 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
-    /* QRA 경매 툴팁 */
-    .auction-type-cell{position:relative;text-align:left !important;}
-    .auction-tip{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:200;
-      background:#1a1a22;border:1px solid rgba(255,255,255,0.12);border-radius:8px;
-      padding:10px 12px;width:220px;pointer-events:none;word-break:keep-all;line-height:1.5;}
-    .auction-type-cell:hover .auction-tip{display:block;}
-    .auction-tip-title{font-size:11px;font-weight:500;color:#fff;margin-bottom:4px;}
-    .auction-tip-body{font-size:11px;color:rgba(255,255,255,0.45);line-height:1.55;margin-bottom:5px;}
-    .auction-tip-liq{font-size:11px;display:flex;gap:4px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.07);flex-wrap:wrap;}
-    .auction-tip-lql{color:rgba(255,255,255,0.25);}
-    .auction-tip-neg{color:#f87171;font-weight:500;}
-    .auction-tip-neu{color:rgba(255,255,255,0.4);font-weight:500;}
-    /* 응찰률/금리 툴팁 */
-    .tip-cell{position:relative;}
-    .tip-cell .mini-tip{display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:200;
-      background:#1a1a22;border:1px solid rgba(255,255,255,0.12);border-radius:8px;
-      padding:8px 10px;width:200px;pointer-events:none;font-size:11px;line-height:1.55;color:rgba(255,255,255,0.45);}
-    .tip-cell:hover .mini-tip{display:block;}
-    .mini-tip b{color:rgba(255,255,255,0.75);font-weight:500;}
+    /* QRA 경매 툴팁 - JS 제어 fixed 팝업 */
+    #auction-tooltip{display:none;position:fixed;z-index:9999;
+      background:#1a1a22;border:1px solid rgba(255,255,255,0.15);border-radius:8px;
+      padding:10px 13px;width:230px;pointer-events:none;
+      font-size:11px;line-height:1.55;color:rgba(255,255,255,0.45);}
+    #auction-tooltip b{color:rgba(255,255,255,0.8);font-weight:500;display:block;margin-bottom:4px;}
+    #auction-tooltip .tip-liq{margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;}
+    #auction-tooltip .tip-neg{color:#f87171;font-weight:500;}
+    #auction-tooltip .tip-neu{color:rgba(255,255,255,0.45);font-weight:500;}
+    .has-tip{cursor:default;}
     /* 인라인 탭 (DTS/QRA) */
     .itab-row{display:flex;gap:4px;margin-bottom:10px;}
     .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
@@ -231,6 +222,38 @@ HTML_TEMPLATE = """
       const el=getPlotlyDiv(cid); if(!el||!window.Plotly) return;
       Plotly.relayout(el,{'xaxis.autorange':true,'yaxis.autorange':true});
     }
+    // 경매 툴팁 (마우스 위치 기반 fixed)
+    document.addEventListener('DOMContentLoaded', function(){
+      const tip = document.createElement('div');
+      tip.id = 'auction-tooltip';
+      document.body.appendChild(tip);
+      document.addEventListener('mouseover', function(e){
+        const el = e.target.closest('.has-tip');
+        if(!el) return;
+        const title = el.dataset.tipTitle || '';
+        const body  = el.dataset.tipBody  || '';
+        const liq   = el.dataset.tipLiq   || '';
+        const neg   = el.dataset.tipNeg === 'true';
+        tip.innerHTML =
+          '<b>' + title + '</b>' +
+          body +
+          (liq ? '<div class="tip-liq">NL: <span class="' + (neg?'tip-neg':'tip-neu') + '">' + liq + '</span></div>' : '');
+        tip.style.display = 'block';
+      });
+      document.addEventListener('mousemove', function(e){
+        if(!tip.style.display || tip.style.display==='none') return;
+        const vw = window.innerWidth;
+        const tw = 240;
+        let x = e.clientX + 12;
+        if(x + tw > vw) x = e.clientX - tw - 8;
+        tip.style.left = x + 'px';
+        tip.style.top  = (e.clientY + 14) + 'px';
+      });
+      document.addEventListener('mouseout', function(e){
+        if(!e.target.closest('.has-tip')) return;
+        tip.style.display = 'none';
+      });
+    });
   </script>
 </head>
 <body>
@@ -426,33 +449,28 @@ HTML_TEMPLATE = """
             {% for r in qra_data.auctions %}
             <tr>
               <td style="text-align:left;">{{ r.date }}</td>
-              <td class="auction-type-cell">
-                <span style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};">{{ r.stype }}</span>
-                <div class="auction-tip">
-                  <div class="auction-tip-title">{{ r.tip_title }} · {{ r.term }}</div>
-                  <div class="auction-tip-body">{{ r.tip_body }}</div>
-                  <div class="auction-tip-liq">
-                    <span class="auction-tip-lql">NL:</span>
-                    <span class="{{ 'auction-tip-neg' if r.tip_neg else 'auction-tip-neu' }}">{{ r.tip_liq }}</span>
-                  </div>
-                </div>
+              <td style="text-align:left;">
+                <span class="has-tip" style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};"
+                  data-tip-title="{{ r.tip_title }} · {{ r.term }}"
+                  data-tip-body="{{ r.tip_body }}"
+                  data-tip-liq="{{ r.tip_liq }}"
+                  data-tip-neg="{{ 'true' if r.tip_neg else 'false' }}">{{ r.stype }}</span>
               </td>
               <td style="text-align:left;color:rgba(255,255,255,0.4);">{{ r.term }}</td>
               <td>{{ r.amt }}</td>
-              <td class="tip-cell">
-                <span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }}">{{ r.btc }}</span>
-                <div class="mini-tip">
-                  <b>응찰률 (Bid-to-Cover)</b><br>
-                  경쟁 입찰 제출액 ÷ 낙찰액. 수요 강도 지표.<br>
-                  <span style="color:#34d399;">2.3x↑</span> 수요 양호 &nbsp;·&nbsp; <span style="color:#f87171;">2.3x↓</span> 수요 부족 경고
-                </div>
+              <td>
+                <span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }} has-tip"
+                  data-tip-title="응찰률 (Bid-to-Cover)"
+                  data-tip-body="경쟁 입찰 제출액 ÷ 낙찰액. 수요 강도 지표."
+                  data-tip-liq="{{ '2.3x↑ 수요 양호' if r.btc_ok else '2.3x↓ 수요 부족 경고' }}"
+                  data-tip-neg="{{ 'false' if r.btc_ok else 'true' }}">{{ r.btc }}</span>
               </td>
-              <td class="tip-cell">
-                {{ r.rate }}
-                <div class="mini-tip">
-                  <b>낙찰 금리/할인율</b><br>
-                  {% if r.is_bill %}T-Bill: 할인율(Discount Rate) 기준. 높을수록 단기 자금 비용↑.{% else %}쿠폰채: 최고 낙찰 수익률(High Yield). 높을수록 재정 이자 부담↑ · NL 장기 압박.{% endif %}
-                </div>
+              <td>
+                <span class="has-tip" style="color:rgba(255,255,255,0.5);"
+                  data-tip-title="낙찰 금리/할인율"
+                  data-tip-body="{{ 'T-Bill: 할인율(Discount Rate) 기준. 높을수록 단기 자금 비용↑.' if r.is_bill else '쿠폰채: 최고 낙찰 수익률(High Yield). 높을수록 재정 이자 부담↑ · NL 장기 압박.' }}"
+                  data-tip-liq="{{ '단기금리 방향성 지표' if r.is_bill else '장기금리↑ → 주식 멀티플 압박' }}"
+                  data-tip-neg="{{ 'false' if r.is_bill else 'true' }}">{{ r.rate }}</span>
               </td>
             </tr>
             {% endfor %}
