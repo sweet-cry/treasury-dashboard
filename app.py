@@ -152,6 +152,18 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    /* QRA 경매 툴팁 */
+    .auction-type-cell{position:relative;text-align:left !important;}
+    .auction-tip{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:200;
+      background:#1a1a22;border:1px solid rgba(255,255,255,0.12);border-radius:8px;
+      padding:10px 12px;width:260px;pointer-events:none;}
+    .auction-type-cell:hover .auction-tip{display:block;}
+    .auction-tip-title{font-size:12px;font-weight:500;color:#fff;margin-bottom:5px;}
+    .auction-tip-body{font-size:11px;color:rgba(255,255,255,0.45);line-height:1.6;margin-bottom:6px;}
+    .auction-tip-liq{font-size:11px;display:flex;gap:4px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.07);}
+    .auction-tip-lql{color:rgba(255,255,255,0.25);}
+    .auction-tip-neg{color:#f87171;font-weight:500;}
+    .auction-tip-neu{color:rgba(255,255,255,0.4);font-weight:500;}
     /* 인라인 탭 (DTS/QRA) */
     .itab-row{display:flex;gap:4px;margin-bottom:10px;}
     .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
@@ -407,7 +419,17 @@ HTML_TEMPLATE = """
             {% for r in qra_data.auctions %}
             <tr>
               <td style="text-align:left;">{{ r.date }}</td>
-              <td style="text-align:left;"><span style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};">{{ r.stype }}</span></td>
+              <td class="auction-type-cell">
+                <span style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};">{{ r.stype }}</span>
+                <div class="auction-tip">
+                  <div class="auction-tip-title">{{ r.tip_title }} · {{ r.term }}</div>
+                  <div class="auction-tip-body">{{ r.tip_body }}</div>
+                  <div class="auction-tip-liq">
+                    <span class="auction-tip-lql">NL:</span>
+                    <span class="{{ 'auction-tip-neg' if r.tip_neg else 'auction-tip-neu' }}">{{ r.tip_liq }}</span>
+                  </div>
+                </div>
+              </td>
               <td style="text-align:left;color:rgba(255,255,255,0.4);">{{ r.term }}</td>
               <td>{{ r.amt }}</td>
               <td><span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }}">{{ r.btc }}</span></td>
@@ -912,6 +934,35 @@ def fetch_dts_data():
     return dep_list, wit_list, balance_list, latest_date
 
 
+TIP_INFO = {
+    "Bill": {
+        "title": "Treasury Bill",
+        "body":  "만기 1년 이하 단기 국채. MMF가 주요 매수자 — T-Bill 발행↑ → RRP↓ 상쇄 → NL 충격 제한.",
+        "liq":   "NL 영향 제한 (RRP 상쇄)", "neg": False,
+    },
+    "Note": {
+        "title": "Treasury Note (2~10Y)",
+        "body":  "중기 국채. 은행·연기금 매수 시 준비금 직접 흡수 → NL 하락 압력. 쿠폰채 비중↑ = 긴축 신호.",
+        "liq":   "은행 준비금 흡수 → NL↓", "neg": True,
+    },
+    "Bond": {
+        "title": "Treasury Bond (20~30Y)",
+        "body":  "장기 국채. 듀레이션 높아 장기 금리 민감. 금리↑ → 주식 멀티플 압박 → NL 효과 이상 충격 가능.",
+        "liq":   "장기금리 경로로 간접 NL 압박", "neg": True,
+    },
+    "TIPS": {
+        "title": "TIPS (물가연동)",
+        "body":  "원금이 CPI에 연동. 실질금리 지표로 활용. TIPS 금리↑ = 긴축 신호. 직접 NL 효과는 제한적.",
+        "liq":   "실질금리 지표 — 직접 효과 제한적", "neg": False,
+    },
+    "FRN": {
+        "title": "FRN (변동금리채)",
+        "body":  "13주 T-Bill 금리에 연동된 변동금리 국채. 금리 상승기 투자자 선호. 단기물에 가까운 유동성 특성.",
+        "liq":   "단기물 유사 — NL 영향 제한적", "neg": False,
+    },
+}
+
+
 def fetch_qra_data():
     """TreasuryDirect TA_WS API → 최근 30일 경매 데이터"""
     from datetime import datetime, timedelta
@@ -970,6 +1021,7 @@ def fetch_qra_data():
             btc_list.append(btc)
 
         tm = TYPE_MAP.get(stype, {"label": stype, "bg": "rgba(255,255,255,0.05)", "color": "rgba(255,255,255,0.3)"})
+        ti = TIP_INFO.get(stype, TIP_INFO["Note"])
         auctions.append({
             "date": date, "stype": tm["label"], "term": term,
             "amt": f"{amt:.1f}",
@@ -977,6 +1029,10 @@ def fetch_qra_data():
             "btc_ok": btc >= 2.3,
             "rate": rate,
             "type_bg": tm["bg"], "type_color": tm["color"],
+            "tip_title": ti["title"],
+            "tip_body":  ti["body"],
+            "tip_liq":   ti["liq"],
+            "tip_neg":   ti["neg"],
         })
 
     auctions = sorted(auctions, key=lambda x: x["date"], reverse=True)[:20]
