@@ -52,6 +52,9 @@ cache = {
     "next_h41": None,
     "tic_chart_html": None, "tic_table": None,
     "tic_updated_at": None, "tic_error": None,
+    # DTS
+    "dts_deposits": None, "dts_withdrawals": None,
+    "dts_balance": None, "dts_date": None, "dts_error": None,
 }
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -202,9 +205,9 @@ HTML_TEMPLATE = """
   <div class="metrics">
     <div class="mc"><div class="mc-lbl">Net Liquidity</div><div class="mc-val">{{ summary.nl }}</div><div class="mc-sub {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_chg }}</div></div>
     <div class="mc"><div class="mc-lbl">NL Regression FV</div><div class="mc-val">{{ summary.fv_nl }}</div><div class="mc-sub {{ 'pos' if summary.fv_nl_cheap else ('neg' if summary.fv_nl_cheap is not none else 'neu') }}">{{ summary.fv_nl_gap }}</div></div>
-    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">주간</span></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} · H.4.1 매주 수요일</div></div>
-    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">주간</span></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} · 다음 발표 ~{{ next_h41 }}</div></div>
-    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">일간</span></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
+    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">주간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} · H.4.1 매주 수요일</div></div>
+    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">주간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} · 다음 발표 ~{{ next_h41 }}</div></div>
+    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">일간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
 
@@ -239,52 +242,170 @@ HTML_TEMPLATE = """
   </div>
 
   <div class="section-title">TGA 사용처 · DTS 일일 내역
+    <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 기준</span>
     <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata.treasury.gov ↗</a>
   </div>
+  {% if dts_error %}
+  <div class="error" style="font-size:12px;">DTS 데이터 오류: {{ dts_error }}</div>
+  {% elif not dts_deposits %}
+  <div class="loading" style="padding:20px;">DTS 데이터 로딩 중...</div>
+  {% else %}
   <div class="dts-grid">
     <div class="dts-card">
       <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 항목 (Table II)
         <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
       </div>
-      <div class="dts-row"><span class="dts-name">Federal Tax Deposits</span><span class="dts-amt c-in">실시간 연동 예정</span></div>
-      <div class="dts-row"><span class="dts-name">Public Debt Issues</span><span class="dts-amt c-in">—</span></div>
-      <div class="dts-row"><span class="dts-name">GSE Mortgage Proceeds</span><span class="dts-amt c-in">—</span></div>
-      <div class="dts-row"><span class="dts-name">Other Deposits</span><span class="dts-amt c-in">—</span></div>
+      {% for item in dts_deposits %}
+      <div class="dts-row">
+        <span class="dts-name">{{ item.name }}</span>
+        <span class="dts-amt c-in">+{{ item.amt }}</span>
+      </div>
+      {% endfor %}
     </div>
     <div class="dts-card">
       <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 항목 (Table II)
         <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
       </div>
-      <div class="dts-row"><span class="dts-name">Social Security Benefits</span><span class="dts-amt c-out">실시간 연동 예정</span></div>
-      <div class="dts-row"><span class="dts-name">Dept of Defense</span><span class="dts-amt c-out">—</span></div>
-      <div class="dts-row"><span class="dts-name">Income Tax Refunds</span><span class="dts-amt c-out">—</span></div>
-      <div class="dts-row"><span class="dts-name">Interest on Debt</span><span class="dts-amt c-out">—</span></div>
-      <div class="dts-row"><span class="dts-name">Dept of Health</span><span class="dts-amt c-out">—</span></div>
+      {% for item in dts_withdrawals %}
+      <div class="dts-row">
+        <span class="dts-name">{{ item.name }}</span>
+        <span class="dts-amt c-out">-{{ item.amt }}</span>
+      </div>
+      {% endfor %}
     </div>
   </div>
+  <div class="dts-card" style="margin-bottom:12px;">
+    <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 잔액 변동 (Table I — 당일 순변동)
+      <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">↗</a>
+    </div>
+    {% for item in dts_balance %}
+    <div class="dts-row">
+      <span class="dts-name">{{ item.name }}</span>
+      <span class="dts-amt" style="color:{{ '#34d399' if item.pos else '#f87171' }};">{{ item.amt }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
-  <div class="section-title">재정 이벤트 캘린더 · 시장 유동성 기준
+  <div class="section-title">재정 이벤트 캘린더
     <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ↗</a>
   </div>
   <div class="chart-card" style="padding:14px 16px;margin-bottom:12px;">
     <div class="cal-legend">
       <span><span class="cal-legend-dot" style="background:#34d399;"></span>유동성 유입 (환급·정부지출)</span>
-      <span><span class="cal-legend-dot" style="background:#f87171;"></span>유동성 유출 (세금납부)</span>
+      <span><span class="cal-legend-dot" style="background:#f87171;"></span>유동성 유출 (세금납부·국채발행)</span>
       <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>중립/발표</span>
     </div>
     <div class="cal-grid">
-      <div class="cal-m"><div class="cal-mn">1월</div><span class="cal-ev ev-out">추정세 납부</span><span class="cal-ev ev-neu">IRS 개시</span></div>
-      <div class="cal-m"><div class="cal-mn">2월</div><span class="cal-ev ev-in">환급 피크↑</span><span class="cal-ev ev-in">EITC·CTC↑</span></div>
-      <div class="cal-m"><div class="cal-mn">3월</div><span class="cal-ev ev-in">환급 지속↑</span><span class="cal-ev ev-neu">S·Corp 신고</span></div>
-      <div class="cal-m hl-red"><div class="cal-mn red">4월 ★</div><span class="cal-ev ev-out">Tax Day↓↓</span><span class="cal-ev ev-out">1Q 추정세↓</span></div>
-      <div class="cal-m"><div class="cal-mn">5월</div><span class="cal-ev ev-in">잔여환급↑</span><span class="cal-ev ev-neu">Form 990</span></div>
-      <div class="cal-m"><div class="cal-mn">6월</div><span class="cal-ev ev-out">2Q 추정세↓</span><span class="cal-ev ev-in">정부지출↑</span></div>
-      <div class="cal-m"><div class="cal-mn">7월</div><span class="cal-ev ev-in">사회보장↑</span><span class="cal-ev ev-in">여름지출↑</span></div>
-      <div class="cal-m"><div class="cal-mn">8월</div><span class="cal-ev ev-out">T-Bill↓</span><span class="cal-ev ev-neu">QRA발표</span></div>
-      <div class="cal-m"><div class="cal-mn">9월</div><span class="cal-ev ev-out">3Q 추정세↓</span><span class="cal-ev ev-in">회계마감↑</span></div>
-      <div class="cal-m"><div class="cal-mn">10월</div><span class="cal-ev ev-neu">새 회계연도</span><span class="cal-ev ev-neu">연장마감</span></div>
-      <div class="cal-m"><div class="cal-mn">11월</div><span class="cal-ev ev-in">연말지출↑</span><span class="cal-ev ev-in">사회보장↑</span></div>
-      <div class="cal-m hl-green"><div class="cal-mn green">12월 ★</div><span class="cal-ev ev-in">지출피크↑↑</span><span class="cal-ev ev-out">연말납부↓</span></div>
+      <div class="cal-m"><div class="cal-mn">1월</div>
+        <span class="cal-ev ev-out">4Q 추정세 납부 (1/15)</span>
+        <span class="cal-ev ev-neu">IRS 신고시즌 개시</span>
+        <span class="cal-ev ev-in">사회보장·메디케어↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~1/29)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">2월</div>
+        <span class="cal-ev ev-in">환급 피크 (W-2)↑↑</span>
+        <span class="cal-ev ev-in">EITC·CTC 환급 개시</span>
+        <span class="cal-ev ev-in">사회보장·메디케어↑</span>
+        <span class="cal-ev ev-neu">H.4.1 매주 수요일</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">3월</div>
+        <span class="cal-ev ev-in">환급 지속↑</span>
+        <span class="cal-ev ev-neu">S-Corp·파트너십 신고(3/15)</span>
+        <span class="cal-ev ev-neu">T-Note 분기발행</span>
+        <span class="cal-ev ev-out">국채 만기·롤오버↓</span>
+      </div>
+      <div class="cal-m hl-red"><div class="cal-mn red">4월 ★</div>
+        <span class="cal-ev ev-out">Tax Day (4/15)↓↓</span>
+        <span class="cal-ev ev-out">1Q 추정세 (4/15)↓</span>
+        <span class="cal-ev ev-out">TGA 급증 → NL 감소</span>
+        <span class="cal-ev ev-neu">연장신청(Form 4868)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">5월</div>
+        <span class="cal-ev ev-in">잔여 환급 지속↑</span>
+        <span class="cal-ev ev-neu">Form 990 비영리 신고</span>
+        <span class="cal-ev ev-in">정부 지출 정상화↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~4월말)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">6월</div>
+        <span class="cal-ev ev-out">2Q 추정세 (6/15)↓</span>
+        <span class="cal-ev ev-in">국방·인프라 지출↑</span>
+        <span class="cal-ev ev-neu">T-Bill 정기 롤오버</span>
+        <span class="cal-ev ev-neu">FOMC 회의(통상)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">7월</div>
+        <span class="cal-ev ev-in">사회보장 지급↑</span>
+        <span class="cal-ev ev-in">메디케어·메디케이드↑</span>
+        <span class="cal-ev ev-in">여름 인프라 지출↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~7/28)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">8월</div>
+        <span class="cal-ev ev-out">T-Bill 대규모 발행↓</span>
+        <span class="cal-ev ev-neu">QRA·TBAC 발표</span>
+        <span class="cal-ev ev-in">정부 재량지출↑</span>
+        <span class="cal-ev ev-neu">잭슨홀 연설(연준)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">9월</div>
+        <span class="cal-ev ev-out">3Q 추정세 (9/15)↓</span>
+        <span class="cal-ev ev-in">회계연도 마감 지출↑↑</span>
+        <span class="cal-ev ev-out">국채 분기 발행↓</span>
+        <span class="cal-ev ev-neu">회계연도 종료(9/30)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">10월</div>
+        <span class="cal-ev ev-neu">새 회계연도 개시(FY)</span>
+        <span class="cal-ev ev-neu">연장 마감(10/15)</span>
+        <span class="cal-ev ev-in">사회보장 COLA 인상↑</span>
+        <span class="cal-ev ev-neu">TIC 데이터 발표(~18일)</span>
+      </div>
+      <div class="cal-m"><div class="cal-mn">11월</div>
+        <span class="cal-ev ev-in">연말 정부 지출↑</span>
+        <span class="cal-ev ev-in">사회보장·복지지출↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~10월말)</span>
+        <span class="cal-ev ev-neu">T-Bond 분기발행</span>
+      </div>
+      <div class="cal-m hl-green"><div class="cal-mn green">12월 ★</div>
+        <span class="cal-ev ev-in">지출 피크↑↑ (회계마감)</span>
+        <span class="cal-ev ev-out">연말 세금 납부↓</span>
+        <span class="cal-ev ev-in">사회보장 선지급↑</span>
+        <span class="cal-ev ev-neu">연준 최종 FOMC</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">시장 유동성 기준
+    <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank">H.4.1 ↗</a>
+  </div>
+  <div class="chart-card" style="padding:14px 18px;margin-bottom:12px;font-size:12px;line-height:1.8;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📥 유동성 유입 신호 (NL 상승 조건)</div>
+        <div class="dts-row"><span class="dts-name">WALCL 증가</span><span style="color:#34d399;font-size:11px;">Fed 자산 매입 → 시중 자금↑</span></div>
+        <div class="dts-row"><span class="dts-name">TGA 감소</span><span style="color:#34d399;font-size:11px;">재무부 지출 → 은행 준비금↑</span></div>
+        <div class="dts-row"><span class="dts-name">RRP 감소</span><span style="color:#34d399;font-size:11px;">MMF 자금 시장 유입↑</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 협상</span><span style="color:#34d399;font-size:11px;">TGA 소진 → NL 급상승</span></div>
+        <div class="dts-row"><span class="dts-name">QE 재개</span><span style="color:#34d399;font-size:11px;">WALCL 확대 → 직접 유동성↑</span></div>
+        <div class="dts-row"><span class="dts-name">환급 시즌 (2~3월)</span><span style="color:#34d399;font-size:11px;">TGA 감소·소비↑</span></div>
+        <div class="dts-row"><span class="dts-name">SRF·정책 대출</span><span style="color:#34d399;font-size:11px;">Fed 긴급 유동성 공급↑</span></div>
+        <div class="dts-row"><span class="dts-name">외환보유 달러 환류</span><span style="color:#34d399;font-size:11px;">해외 중앙은행 스왑라인↑</span></div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📤 유동성 유출 신호 (NL 하락 조건)</div>
+        <div class="dts-row"><span class="dts-name">WALCL 감소 (QT)</span><span style="color:#f87171;font-size:11px;">Fed 자산 축소 → 준비금 감소↓</span></div>
+        <div class="dts-row"><span class="dts-name">TGA 급증</span><span style="color:#f87171;font-size:11px;">세금납부·국채발행 → 시중 흡수↓</span></div>
+        <div class="dts-row"><span class="dts-name">RRP 증가</span><span style="color:#f87171;font-size:11px;">MMF가 Fed에 자금 예치↓</span></div>
+        <div class="dts-row"><span class="dts-name">Tax Day (4월)</span><span style="color:#f87171;font-size:11px;">TGA 급증 → NL 단기 압박↓</span></div>
+        <div class="dts-row"><span class="dts-name">추정세 납부(분기)</span><span style="color:#f87171;font-size:11px;">1/15 · 4/15 · 6/15 · 9/15↓</span></div>
+        <div class="dts-row"><span class="dts-name">T-Bill 대규모 발행</span><span style="color:#f87171;font-size:11px;">시중 자금 국채로 흡수↓</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span style="color:#f87171;font-size:11px;">TGA 재충전 → NL 급락↓</span></div>
+        <div class="dts-row"><span class="dts-name">기준금리 인상</span><span style="color:#f87171;font-size:11px;">RRP 금리 매력↑ → 자금유출↓</span></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.25);">
+      💡 <b style="color:rgba(255,255,255,0.4);">핵심 공식:</b> NL = WALCL − TGA − RRP &nbsp;·&nbsp;
+      NL이 상승하면 시중 유동성 증가 → 위험자산 선호 경향 &nbsp;·&nbsp;
+      <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL↗</a> &nbsp;
+      <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA↗</a> &nbsp;
+      <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP↗</a>
     </div>
   </div>
 
@@ -573,6 +694,105 @@ def fetch_tic_data():
     latest = pivot.index[-1].strftime("%Y-%m")
     print(f"TIC 완료: {len(pivot)}개 포인트, {len(pivot.columns)}개국, 최신={latest}")
     return pivot
+
+
+def fmt_mil(v):
+    """백만 달러(DTS 단위) → 읽기 쉬운 문자열"""
+    try:
+        v = float(str(v).replace(",", ""))
+    except Exception:
+        return "—"
+    if abs(v) >= 1_000_000:
+        return f"{v/1_000_000:.2f}T"
+    if abs(v) >= 1_000:
+        return f"{v/1_000:.1f}B"
+    return f"{v:,.0f}M"
+
+
+def fetch_dts_data():
+    """
+    Fiscal Data API → DTS Table I (잔액) + Table II (입출금)
+    단위: 백만 달러 (Millions of dollars)
+    """
+    base = "https://fiscaldata.treasury.gov/api/v1"
+    EXCLUDE_CATG = {"Total Deposits", "Total Withdrawals", "Total",
+                    "Subtotal", "Grand Total", ""}
+
+    # ── Table II: 입출금 ──
+    url_t2 = (
+        f"{base}/accounting/dts/deposits-withdrawals-operating-cash"
+        f"?fields=record_date,transaction_catg,transaction_type,transaction_today_amt"
+        f"&filter=transaction_type:in:(D,W)"
+        f"&sort=-record_date"
+        f"&page[size]=300"
+    )
+    r2 = req.get(url_t2, timeout=30)
+    r2.raise_for_status()
+    data2 = r2.json().get("data", [])
+    if not data2:
+        raise ValueError("DTS Table II 데이터 없음")
+
+    latest_date = data2[0]["record_date"]
+    day_data = [d for d in data2 if d["record_date"] == latest_date]
+
+    deposits, withdrawals = {}, {}
+    for d in day_data:
+        catg = d.get("transaction_catg", "").strip()
+        try:
+            amt = float((d.get("transaction_today_amt") or "0").replace(",", ""))
+        except Exception:
+            amt = 0.0
+        if d["transaction_type"] == "D":
+            deposits[catg] = deposits.get(catg, 0) + amt
+        else:
+            withdrawals[catg] = withdrawals.get(catg, 0) + amt
+
+    dep_sorted = sorted(
+        [(k, v) for k, v in deposits.items() if k not in EXCLUDE_CATG and v > 0],
+        key=lambda x: x[1], reverse=True
+    )[:8]
+    wit_sorted = sorted(
+        [(k, v) for k, v in withdrawals.items() if k not in EXCLUDE_CATG and v > 0],
+        key=lambda x: x[1], reverse=True
+    )[:8]
+
+    dep_list = [{"name": k, "amt": fmt_mil(v)} for k, v in dep_sorted]
+    wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
+
+    # ── Table I: TGA 잔액 ──
+    url_t1 = (
+        f"{base}/accounting/dts/operating-cash-balance"
+        f"?fields=record_date,account_type,open_today_bal,close_today_bal"
+        f"&sort=-record_date"
+        f"&page[size]=30"
+    )
+    r1 = req.get(url_t1, timeout=30)
+    r1.raise_for_status()
+    data1 = r1.json().get("data", [])
+
+    balance_list = []
+    for d in data1:
+        if d["record_date"] != latest_date:
+            continue
+        acct = d.get("account_type", "").strip()
+        if not acct:
+            continue
+        try:
+            open_b = float((d.get("open_today_bal") or "0").replace(",", ""))
+            close_b = float((d.get("close_today_bal") or "0").replace(",", ""))
+            chg = close_b - open_b
+        except Exception:
+            chg = open_b = close_b = 0.0
+        balance_list.append({
+            "name": f"{acct}",
+            "amt": f"{'▲' if chg >= 0 else '▼'} {fmt_mil(abs(chg))}  ({fmt_mil(open_b)} → {fmt_mil(close_b)})",
+            "pos": chg >= 0,
+        })
+
+    print(f"DTS 완료: {latest_date}, 입금{len(dep_list)}건 출금{len(wit_list)}건")
+    return dep_list, wit_list, balance_list, latest_date
+
+
 def fmt_val(v):
     if abs(v) >= 1_000:
         return f"{v/1_000:.2f}T"
@@ -801,9 +1021,25 @@ def refresh_tic():
         print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 오류: {e}")
 
 
+def refresh_dts():
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] DTS 갱신 시작...")
+    try:
+        dep, wit, bal, date = fetch_dts_data()
+        cache["dts_deposits"]    = dep
+        cache["dts_withdrawals"] = wit
+        cache["dts_balance"]     = bal
+        cache["dts_date"]        = date
+        cache["dts_error"]       = None
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] DTS 완료: {date}")
+    except Exception as e:
+        cache["dts_error"] = str(e)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] DTS 오류: {e}")
+
+
 def refresh_data():
     refresh_nl()
     refresh_tic()
+    refresh_dts()
 
 
 def start_scheduler():
@@ -812,8 +1048,10 @@ def start_scheduler():
     scheduler.add_job(refresh_nl,  CronTrigger(hour=7,  minute=0,  timezone=KST), id="spx_daily")
     scheduler.add_job(refresh_nl,  CronTrigger(day_of_week="thu", hour=5, minute=30, timezone=KST), id="h41_weekly")
     scheduler.add_job(refresh_tic, CronTrigger(day=18,  hour=2,   minute=0,  timezone=KST), id="tic_monthly")
+    # DTS: 평일 오전 9시 KST (전날 DTS 약 ~08:30 KST 공개)
+    scheduler.add_job(refresh_dts, CronTrigger(day_of_week="mon-fri", hour=9, minute=0, timezone=KST), id="dts_daily")
     scheduler.start()
-    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=18일 02:00 (KST)")
+    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=18일 02:00 / DTS=평일 09:00 (KST)")
     return scheduler
 
 
@@ -834,7 +1072,13 @@ def index():
         tic_updated_at=cache.get("tic_updated_at") or "—",
         tic_error=cache.get("tic_error"),
         tic_legend=tic_legend,
-        next_h41=cache.get("next_h41") or "—")
+        next_h41=cache.get("next_h41") or "—",
+        dts_deposits=cache.get("dts_deposits") or [],
+        dts_withdrawals=cache.get("dts_withdrawals") or [],
+        dts_balance=cache.get("dts_balance") or [],
+        dts_date=cache.get("dts_date") or "—",
+        dts_error=cache.get("dts_error"),
+    )
 
 
 @app.route("/refresh")
