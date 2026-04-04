@@ -150,6 +150,14 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    /* 접기/펼치기 */
+    details.collapsible{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;}
+    details.collapsible summary{padding:11px 16px;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;}
+    details.collapsible summary::-webkit-details-marker{display:none;}
+    details.collapsible summary::before{content:'▶';font-size:8px;color:rgba(255,255,255,0.2);transition:transform .2s;flex-shrink:0;}
+    details.collapsible[open] summary::before{transform:rotate(90deg);}
+    details.collapsible summary:hover{color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.02);}
+    .collapsible-body{padding:14px 16px;border-top:1px solid rgba(255,255,255,0.06);}
   </style>
   <script>
     window.onload=function(){
@@ -372,60 +380,64 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <div class="section-title">시장 유동성 기준
-    <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank">H.4.1 ↗</a>
-  </div>
-  <div class="chart-card" style="padding:14px 18px;margin-bottom:12px;font-size:12px;line-height:1.8;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📥 유동성 유입 신호 (NL 상승 조건)</div>
-        <div class="dts-row"><span class="dts-name">WALCL 증가</span><span style="color:#34d399;font-size:11px;">Fed 자산 매입 → 시중 자금↑</span></div>
-        <div class="dts-row"><span class="dts-name">TGA 감소</span><span style="color:#34d399;font-size:11px;">재무부 지출 → 은행 준비금↑</span></div>
-        <div class="dts-row"><span class="dts-name">RRP 감소</span><span style="color:#34d399;font-size:11px;">MMF 자금 시장 유입↑</span></div>
-        <div class="dts-row"><span class="dts-name">부채한도 협상</span><span style="color:#34d399;font-size:11px;">TGA 소진 → NL 급상승</span></div>
-        <div class="dts-row"><span class="dts-name">QE 재개</span><span style="color:#34d399;font-size:11px;">WALCL 확대 → 직접 유동성↑</span></div>
-        <div class="dts-row"><span class="dts-name">환급 시즌 (2~3월)</span><span style="color:#34d399;font-size:11px;">TGA 감소·소비↑</span></div>
-        <div class="dts-row"><span class="dts-name">SRF·정책 대출</span><span style="color:#34d399;font-size:11px;">Fed 긴급 유동성 공급↑</span></div>
-        <div class="dts-row"><span class="dts-name">외환보유 달러 환류</span><span style="color:#34d399;font-size:11px;">해외 중앙은행 스왑라인↑</span></div>
+  <details class="collapsible">
+    <summary>시장 유동성 기준 <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank" onclick="event.stopPropagation()">H.4.1 ↗</a></summary>
+    <div class="collapsible-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;line-height:1.8;">
+        <div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📥 유동성 유입 신호 (NL 상승 조건)</div>
+          <div class="dts-row"><span class="dts-name">WALCL 증가</span><span style="color:#34d399;font-size:11px;">Fed 자산 매입 → 시중 자금↑</span></div>
+          <div class="dts-row"><span class="dts-name">TGA 감소</span><span style="color:#34d399;font-size:11px;">재무부 지출 → 은행 준비금↑</span></div>
+          <div class="dts-row"><span class="dts-name">RRP 감소</span><span style="color:#34d399;font-size:11px;">MMF 자금 시장 유입↑</span></div>
+          <div class="dts-row"><span class="dts-name">부채한도 협상</span><span style="color:#34d399;font-size:11px;">TGA 소진 → NL 급상승</span></div>
+          <div class="dts-row"><span class="dts-name">QE 재개</span><span style="color:#34d399;font-size:11px;">WALCL 확대 → 직접 유동성↑</span></div>
+          <div class="dts-row"><span class="dts-name">환급 시즌 (2~3월)</span><span style="color:#34d399;font-size:11px;">TGA 감소·소비↑</span></div>
+          <div class="dts-row"><span class="dts-name">SRF·정책 대출</span><span style="color:#34d399;font-size:11px;">Fed 긴급 유동성 공급↑</span></div>
+          <div class="dts-row"><span class="dts-name">외환보유 달러 환류</span><span style="color:#34d399;font-size:11px;">해외 중앙은행 스왑라인↑</span></div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📤 유동성 유출 신호 (NL 하락 조건)</div>
+          <div class="dts-row"><span class="dts-name">WALCL 감소 (QT)</span><span style="color:#f87171;font-size:11px;">Fed 자산 축소 → 준비금 감소↓</span></div>
+          <div class="dts-row"><span class="dts-name">TGA 급증</span><span style="color:#f87171;font-size:11px;">세금납부·국채발행 → 시중 흡수↓</span></div>
+          <div class="dts-row"><span class="dts-name">RRP 증가</span><span style="color:#f87171;font-size:11px;">MMF가 Fed에 자금 예치↓</span></div>
+          <div class="dts-row"><span class="dts-name">Tax Day (4월)</span><span style="color:#f87171;font-size:11px;">TGA 급증 → NL 단기 압박↓</span></div>
+          <div class="dts-row"><span class="dts-name">추정세 납부(분기)</span><span style="color:#f87171;font-size:11px;">1/15 · 4/15 · 6/15 · 9/15↓</span></div>
+          <div class="dts-row"><span class="dts-name">T-Bill 대규모 발행</span><span style="color:#f87171;font-size:11px;">시중 자금 국채로 흡수↓</span></div>
+          <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span style="color:#f87171;font-size:11px;">TGA 재충전 → NL 급락↓</span></div>
+          <div class="dts-row"><span class="dts-name">기준금리 인상</span><span style="color:#f87171;font-size:11px;">RRP 금리 매력↑ → 자금유출↓</span></div>
+        </div>
       </div>
-      <div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📤 유동성 유출 신호 (NL 하락 조건)</div>
-        <div class="dts-row"><span class="dts-name">WALCL 감소 (QT)</span><span style="color:#f87171;font-size:11px;">Fed 자산 축소 → 준비금 감소↓</span></div>
-        <div class="dts-row"><span class="dts-name">TGA 급증</span><span style="color:#f87171;font-size:11px;">세금납부·국채발행 → 시중 흡수↓</span></div>
-        <div class="dts-row"><span class="dts-name">RRP 증가</span><span style="color:#f87171;font-size:11px;">MMF가 Fed에 자금 예치↓</span></div>
-        <div class="dts-row"><span class="dts-name">Tax Day (4월)</span><span style="color:#f87171;font-size:11px;">TGA 급증 → NL 단기 압박↓</span></div>
-        <div class="dts-row"><span class="dts-name">추정세 납부(분기)</span><span style="color:#f87171;font-size:11px;">1/15 · 4/15 · 6/15 · 9/15↓</span></div>
-        <div class="dts-row"><span class="dts-name">T-Bill 대규모 발행</span><span style="color:#f87171;font-size:11px;">시중 자금 국채로 흡수↓</span></div>
-        <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span style="color:#f87171;font-size:11px;">TGA 재충전 → NL 급락↓</span></div>
-        <div class="dts-row"><span class="dts-name">기준금리 인상</span><span style="color:#f87171;font-size:11px;">RRP 금리 매력↑ → 자금유출↓</span></div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.25);">
+        💡 <b style="color:rgba(255,255,255,0.4);">핵심 공식:</b> NL = WALCL − TGA − RRP &nbsp;·&nbsp;
+        NL이 상승하면 시중 유동성 증가 → 위험자산 선호 경향 &nbsp;·&nbsp;
+        <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL↗</a> &nbsp;
+        <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA↗</a> &nbsp;
+        <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP↗</a>
       </div>
     </div>
-    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.25);">
-      💡 <b style="color:rgba(255,255,255,0.4);">핵심 공식:</b> NL = WALCL − TGA − RRP &nbsp;·&nbsp;
-      NL이 상승하면 시중 유동성 증가 → 위험자산 선호 경향 &nbsp;·&nbsp;
-      <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL↗</a> &nbsp;
-      <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA↗</a> &nbsp;
-      <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP↗</a>
-    </div>
-  </div>
+  </details>
 
-  <div class="section-title">계산 방법론</div>
-  <div class="method-box">
-    <h3>1. Net Liquidity</h3>
-    <div class="formula">NL = WALCL − TGA − RRP</div>
-    <div class="desc"><b>WALCL</b>: Fed 총자산 — 많을수록 시중에 돈이 많이 풀린 상태</div>
-    <div class="desc"><b>TGA 차감</b>: 재무부가 Fed에 예치한 현금 — 시장에 풀리지 않은 돈</div>
-    <div class="desc"><b>RRP 차감</b>: MMF 등이 Fed에 맡긴 역레포 잔액 — 시장 밖에 있는 돈</div>
-    <div class="desc" style="margin-top:6px;">→ Michael Howell(CrossBorder Capital), Lyn Alden 등이 대중화. Fed 유동성이 실제로 시장에 얼마나 풀려있는지 측정.</div>
-    <h3 style="margin-top:14px;">2. NL 회귀 공정가치</h3>
-    <div class="formula">SPX_FV = slope × NL + intercept</div>
-    <div class="desc">2000년부터 현재까지 일간 데이터로 선형회귀. NL↑ → SPX 공정가치↑ 관계 모델링.</div>
-    {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R²={{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
-    <h3 style="margin-top:14px;">3. 괴리율</h3>
-    <div class="formula">괴리율 = (SPX현재가 − FV) / FV × 100 (%)</div>
-    <div class="desc">양수(+): 고평가 &nbsp;|&nbsp; 음수(−): 저평가</div>
-    <div class="warn">※ NL↔SPX 상관관계(R²≈0.6~0.8)는 표본 기간에 의존하며, 인과관계가 아닌 상관관계입니다. 절대적 FV보다 <b>방향성·괴리 추세</b> 위주로 활용 권장.</div>
-  </div>
+  <details class="collapsible">
+    <summary>계산 방법론</summary>
+    <div class="collapsible-body">
+      <div class="method-box" style="margin-bottom:0;">
+        <h3>1. Net Liquidity</h3>
+        <div class="formula">NL = WALCL − TGA − RRP</div>
+        <div class="desc"><b>WALCL</b>: Fed 총자산 — 많을수록 시중에 돈이 많이 풀린 상태</div>
+        <div class="desc"><b>TGA 차감</b>: 재무부가 Fed에 예치한 현금 — 시장에 풀리지 않은 돈</div>
+        <div class="desc"><b>RRP 차감</b>: MMF 등이 Fed에 맡긴 역레포 잔액 — 시장 밖에 있는 돈</div>
+        <div class="desc" style="margin-top:6px;">→ Michael Howell(CrossBorder Capital), Lyn Alden 등이 대중화. Fed 유동성이 실제로 시장에 얼마나 풀려있는지 측정.</div>
+        <h3 style="margin-top:14px;">2. NL 회귀 공정가치</h3>
+        <div class="formula">SPX_FV = slope × NL + intercept</div>
+        <div class="desc">2000년부터 현재까지 일간 데이터로 선형회귀. NL↑ → SPX 공정가치↑ 관계 모델링.</div>
+        {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R²={{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
+        <h3 style="margin-top:14px;">3. 괴리율</h3>
+        <div class="formula">괴리율 = (SPX현재가 − FV) / FV × 100 (%)</div>
+        <div class="desc">양수(+): 고평가 &nbsp;|&nbsp; 음수(−): 저평가</div>
+        <div class="warn">※ NL↔SPX 상관관계(R²≈0.6~0.8)는 표본 기간에 의존하며, 인과관계가 아닌 상관관계입니다. 절대적 FV보다 <b>방향성·괴리 추세</b> 위주로 활용 권장.</div>
+      </div>
+    </div>
+  </details>
 
   <div class="section-title">요약</div>
   <div class="summary-box">
@@ -743,9 +755,9 @@ def fetch_dts_data():
             amt = float((d.get("transaction_today_amt") or "0").replace(",", ""))
         except Exception:
             amt = 0.0
-        if ttype == "D":
+        if "Deposit" in ttype:
             deposits[catg] = deposits.get(catg, 0) + amt
-        elif ttype == "W":
+        elif "Withdrawal" in ttype:
             withdrawals[catg] = withdrawals.get(catg, 0) + amt
 
     dep_sorted = sorted(
@@ -760,9 +772,9 @@ def fetch_dts_data():
     dep_list = [{"name": k, "amt": fmt_mil(v)} for k, v in dep_sorted]
     wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
 
-    # ── Table I: TGA 잔액 (dts_table_1) ──
+    # ── Table I: TGA 잔액 (operating_cash_balance) ──
     url_t1 = (
-        f"{base}/accounting/dts/dts_table_1"
+        f"{base}/accounting/dts/operating_cash_balance"
         f"?fields=record_date,account_type,open_today_bal,close_today_bal"
         f"&sort=-record_date"
         f"&page[size]=30"
