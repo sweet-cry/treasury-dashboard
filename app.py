@@ -55,6 +55,8 @@ cache = {
     # DTS
     "dts_deposits": None, "dts_withdrawals": None,
     "dts_balance": None, "dts_date": None, "dts_error": None,
+    # QRA
+    "qra_data": None, "qra_error": None,
 }
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -150,6 +152,24 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    /* 인라인 탭 (DTS/QRA) */
+    .itab-row{display:flex;gap:4px;margin-bottom:10px;}
+    .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
+    .itab.active{background:rgba(96,165,250,0.12);border-color:rgba(96,165,250,0.35);color:#60a5fa;}
+    .itab-panel{display:none;}.itab-panel.active{display:block;}
+    /* QRA 바 차트 */
+    .qra-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;}
+    .qra-bar-label{width:110px;color:rgba(255,255,255,0.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
+    .qra-bar-bg{flex:1;height:5px;background:rgba(255,255,255,0.05);border-radius:3px;}
+    .qra-bar-fill{height:5px;border-radius:3px;transition:width .4s;}
+    .qra-bar-amt{width:64px;text-align:right;color:rgba(255,255,255,0.5);font-weight:500;flex-shrink:0;}
+    .qra-tag{font-size:10px;padding:1px 7px;border-radius:4px;margin-left:6px;flex-shrink:0;}
+    .tag-out{background:rgba(248,113,113,0.1);color:#f87171;}
+    .tag-in{background:rgba(52,211,153,0.1);color:#34d399;}
+    .tag-neu{background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.3);}
+    .qra-pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+    .qra-pill{font-size:10px;padding:2px 10px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);}
+    .qra-pill.hl{border-color:rgba(96,165,250,0.4);color:#60a5fa;background:rgba(96,165,250,0.08);}
     /* 접기/펼치기 */
     details.collapsible{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;}
     details.collapsible summary{padding:11px 16px;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;}
@@ -172,6 +192,12 @@ HTML_TEMPLATE = """
       document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
       document.getElementById('tab-btn-'+id).classList.add('active');
       document.getElementById('tab-'+id).classList.add('active');
+    }
+    function switchItab(sec, id){
+      document.querySelectorAll('#'+sec+' .itab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('#'+sec+' .itab-panel').forEach(p=>p.classList.remove('active'));
+      document.getElementById(sec+'-tab-'+id).classList.add('active');
+      document.getElementById(sec+'-panel-'+id).classList.add('active');
     }
     function getPlotlyDiv(cid){return document.getElementById(cid).querySelector('.js-plotly-plot');}
     function zoomChart(cid,dir){
@@ -249,51 +275,151 @@ HTML_TEMPLATE = """
     <div id="c2" style="padding:4px;">{{ chart2_html | safe }}</div>
   </div>
 
-  <div class="section-title">TGA 사용처 · DTS 일일 내역
+  <div class="section-title">TGA 사용처 · DTS · QRA
     <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 기준</span>
-    <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata.treasury.gov ↗</a>
+    <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata ↗</a>
   </div>
-  {% if dts_error %}
-  <div class="error" style="font-size:12px;">DTS 데이터 오류: {{ dts_error }}</div>
-  {% elif not dts_deposits %}
-  <div class="loading" style="padding:20px;">DTS 데이터 로딩 중...</div>
-  {% else %}
-  <div class="dts-grid">
-    <div class="dts-card">
-      <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 항목 (Table II)
-        <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
-      </div>
-      {% for item in dts_deposits %}
-      <div class="dts-row">
-        <span class="dts-name">{{ item.name }}</span>
-        <span class="dts-amt c-in">+{{ item.amt }}</span>
-      </div>
-      {% endfor %}
+
+  <div id="dts-qra-tabs">
+    <div class="itab-row">
+      <button class="itab active" id="dts-qra-tabs-tab-dts" onclick="switchItab('dts-qra-tabs','dts')">DTS 일일 내역</button>
+      <button class="itab" id="dts-qra-tabs-tab-qra" onclick="switchItab('dts-qra-tabs','qra')">QRA 국채발행</button>
     </div>
-    <div class="dts-card">
-      <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 항목 (Table II)
-        <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
+
+    <!-- DTS 패널 -->
+    <div class="itab-panel active" id="dts-qra-tabs-panel-dts">
+      {% if dts_error %}
+      <div class="error" style="font-size:12px;">DTS 데이터 오류: {{ dts_error }}</div>
+      {% elif not dts_deposits %}
+      <div class="loading" style="padding:20px;">DTS 데이터 로딩 중...</div>
+      {% else %}
+      <div class="dts-grid">
+        <div class="dts-card">
+          <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 항목 (Table II)
+            <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
+          </div>
+          {% for item in dts_deposits %}
+          <div class="dts-row">
+            <span class="dts-name">{{ item.name }}</span>
+            <span class="dts-amt c-in">+{{ item.amt }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="dts-card">
+          <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 항목 (Table II)
+            <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
+          </div>
+          {% for item in dts_withdrawals %}
+          <div class="dts-row">
+            <span class="dts-name">{{ item.name }}</span>
+            <span class="dts-amt c-out">-{{ item.amt }}</span>
+          </div>
+          {% endfor %}
+        </div>
       </div>
-      {% for item in dts_withdrawals %}
-      <div class="dts-row">
-        <span class="dts-name">{{ item.name }}</span>
-        <span class="dts-amt c-out">-{{ item.amt }}</span>
+      <div class="dts-card" style="margin-bottom:12px;">
+        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 당일 순변동 요약
+          <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">↗</a>
+        </div>
+        {% for item in dts_balance %}
+        <div class="dts-row">
+          <span class="dts-name">{{ item.name }}</span>
+          <span class="dts-amt" style="color:{{ '#34d399' if item.pos else '#f87171' }};">{{ item.amt }}</span>
+        </div>
+        {% endfor %}
       </div>
-      {% endfor %}
+      {% endif %}
+    </div>
+
+    <!-- QRA 패널 -->
+    <div class="itab-panel" id="dts-qra-tabs-panel-qra">
+      {% if qra_error %}
+      <div class="error" style="font-size:12px;">QRA 데이터 오류: {{ qra_error }}</div>
+      {% elif not qra_data %}
+      <div class="loading" style="padding:20px;">QRA 데이터 로딩 중...</div>
+      {% else %}
+      <!-- 메트릭 카드 -->
+      <div class="metrics" style="margin-bottom:10px;">
+        <div class="mc"><div class="mc-lbl">다음 QRA 발표</div><div class="mc-val" style="font-size:16px;">{{ qra_data.next_qra }}</div><div class="mc-sub neu">분기 차입 수요 발표</div></div>
+        <div class="mc"><div class="mc-lbl">최근 T-Bill 발행 (30일)</div><div class="mc-val">{{ qra_data.tbill_30d }}</div><div class="mc-sub neg">유동성 흡수↓</div></div>
+        <div class="mc"><div class="mc-lbl">최근 쿠폰채 발행 (30일)</div><div class="mc-val">{{ qra_data.coupon_30d }}</div><div class="mc-sub neg">NL 압박↓</div></div>
+        <div class="mc"><div class="mc-lbl">최근 TIPS 발행 (30일)</div><div class="mc-val">{{ qra_data.tips_30d }}</div><div class="mc-sub neu">물가연동</div></div>
+        <div class="mc"><div class="mc-lbl">평균 응찰률 (BTC)</div><div class="mc-val">{{ qra_data.avg_btc }}</div><div class="mc-sub neu">최근 30일 평균</div></div>
+        <div class="mc"><div class="mc-lbl">총 발행 (30일)</div><div class="mc-val">{{ qra_data.total_30d }}</div><div class="mc-sub neg">시장 흡수 규모↓</div></div>
+      </div>
+
+      <!-- 발행 구성 바 -->
+      <div class="dts-card" style="margin-bottom:10px;">
+        <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>국채 발행 구성 (최근 30일 · 유동성 흡수)
+          <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned" target="_blank">TreasuryDirect ↗</a>
+        </div>
+        {% for item in qra_data.breakdown %}
+        <div class="qra-bar-row">
+          <span class="qra-bar-label">{{ item.label }}</span>
+          <div class="qra-bar-bg"><div class="qra-bar-fill" style="width:{{ item.pct }}%;background:{{ item.color }};"></div></div>
+          <span class="qra-bar-amt">{{ item.amt }}</span>
+        </div>
+        {% endfor %}
+        <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
+          * 국채 발행 → TGA 유입 → NL 감소. T-Bill 위주 발행 시 MMF(RRP)↓ 상쇄 효과 있음.
+        </div>
+      </div>
+
+      <!-- QRA 판독 기준 -->
+      <div class="dts-card" style="margin-bottom:10px;">
+        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>QRA 유동성 판독 기준</div>
+        <div class="dts-row"><span class="dts-name">T-Bill 비중 높음</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">RRP↓ 상쇄</span><span class="qra-tag tag-in">NL 중립~유입</span></div>
+        <div class="dts-row"><span class="dts-name">쿠폰채 비중 높음</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">은행 준비금 흡수</span><span class="qra-tag tag-out">NL 압박</span></div>
+        <div class="dts-row"><span class="dts-name">차입 규모 예상↑</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 급증 예고</span><span class="qra-tag tag-out">NL 하락 신호</span></div>
+        <div class="dts-row"><span class="dts-name">차입 규모 예상↓</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 완만 유지</span><span class="qra-tag tag-in">NL 안정 신호</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 협상 중</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 소진 지속</span><span class="qra-tag tag-in">NL 인위적 상승</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 재충전</span><span class="qra-tag tag-out">NL 급락 위험</span></div>
+      </div>
+
+      <!-- 발표 일정 -->
+      <div class="dts-card" style="margin-bottom:10px;">
+        <div class="dts-hd"><span class="dts-dot" style="background:#fbbf24;"></span>QRA 발표 일정 (2026)</div>
+        <div class="qra-pill-row">
+          {% for q in qra_data.schedule %}
+          <span class="qra-pill {{ 'hl' if q.current else '' }}">{{ q.label }}</span>
+          {% endfor %}
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;">
+          TBAC 발표 당일 시장 변동성 주의. 차입 규모↑ → 금리↑ · NL↓ 압력.
+        </div>
+      </div>
+
+      <!-- 최근 경매 내역 -->
+      <div class="section-title" style="margin-top:4px;">최근 경매 내역 (30일)
+        <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned?format=json&dateFieldName=auctionDate&startDate={{ qra_data.start_date }}" target="_blank">원본 ↗</a>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="text-align:left;">경매일</th>
+            <th style="text-align:left;">종류</th>
+            <th style="text-align:left;">만기</th>
+            <th>발행액(B)</th>
+            <th>응찰률</th>
+            <th>금리/할인율</th>
+          </tr></thead>
+          <tbody>
+            {% for r in qra_data.auctions %}
+            <tr>
+              <td style="text-align:left;">{{ r.date }}</td>
+              <td style="text-align:left;"><span style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};">{{ r.stype }}</span></td>
+              <td style="text-align:left;color:rgba(255,255,255,0.4);">{{ r.term }}</td>
+              <td>{{ r.amt }}</td>
+              <td><span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }}">{{ r.btc }}</span></td>
+              <td>{{ r.rate }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
     </div>
   </div>
-  <div class="dts-card" style="margin-bottom:12px;">
-    <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 잔액 요약 (Table II 합계 기준)
-      <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">↗</a>
-    </div>
-    {% for item in dts_balance %}
-    <div class="dts-row">
-      <span class="dts-name">{{ item.name }}</span>
-      <span class="dts-amt" style="color:{{ '#34d399' if item.pos else '#f87171' }};">{{ item.amt }}</span>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
 
   <div class="section-title">재정 이벤트 캘린더
     <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ↗</a>
@@ -786,6 +912,111 @@ def fetch_dts_data():
     return dep_list, wit_list, balance_list, latest_date
 
 
+def fetch_qra_data():
+    """TreasuryDirect TA_WS API → 최근 30일 경매 데이터"""
+    from datetime import datetime, timedelta
+    import pytz
+    now = datetime.now(pytz.utc)
+    start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    end   = now.strftime("%Y-%m-%d")
+
+    url = (
+        "https://www.treasurydirect.gov/TA_WS/securities/auctioned"
+        f"?format=json&dateFieldName=auctionDate&startDate={start}&endDate={end}"
+    )
+    r = req.get(url, timeout=30)
+    r.raise_for_status()
+    raw = r.json()
+    if not raw:
+        raise ValueError("QRA 경매 데이터 없음")
+
+    TYPE_MAP = {
+        "Bill":  {"label": "T-Bill", "bg": "rgba(248,113,113,0.12)", "color": "#f87171"},
+        "Note":  {"label": "Note",   "bg": "rgba(96,165,250,0.12)",  "color": "#60a5fa"},
+        "Bond":  {"label": "Bond",   "bg": "rgba(251,191,36,0.12)",  "color": "#fbbf24"},
+        "TIPS":  {"label": "TIPS",   "bg": "rgba(167,139,250,0.12)", "color": "#a78bfa"},
+        "FRN":   {"label": "FRN",    "bg": "rgba(52,211,153,0.12)",  "color": "#34d399"},
+    }
+
+    tbill = note = bond = tips = total = 0.0
+    btc_list = []
+    auctions = []
+
+    for d in raw:
+        stype = d.get("securityType", "")
+        term  = d.get("securityTerm", "")
+        date  = (d.get("auctionDate") or "")[:10]
+        try:
+            amt = float(d.get("totalAccepted") or d.get("competitiveAccepted") or 0) / 1e9
+        except Exception:
+            amt = 0.0
+        try:
+            btc = float(d.get("bidToCoverRatio") or 0)
+        except Exception:
+            btc = 0.0
+        rate_raw = d.get("highDiscountRate") or d.get("highYield") or d.get("interestRate") or ""
+        try:
+            rate = f"{float(rate_raw):.3f}%"
+        except Exception:
+            rate = "—"
+
+        total += amt
+        if stype == "Bill":   tbill += amt
+        elif stype == "Note": note  += amt
+        elif stype == "Bond": bond  += amt
+        elif stype == "TIPS": tips  += amt
+
+        if btc > 0:
+            btc_list.append(btc)
+
+        tm = TYPE_MAP.get(stype, {"label": stype, "bg": "rgba(255,255,255,0.05)", "color": "rgba(255,255,255,0.3)"})
+        auctions.append({
+            "date": date, "stype": tm["label"], "term": term,
+            "amt": f"{amt:.1f}",
+            "btc": f"{btc:.2f}x" if btc > 0 else "—",
+            "btc_ok": btc >= 2.3,
+            "rate": rate,
+            "type_bg": tm["bg"], "type_color": tm["color"],
+        })
+
+    auctions = sorted(auctions, key=lambda x: x["date"], reverse=True)[:20]
+    avg_btc = sum(btc_list) / len(btc_list) if btc_list else 0
+
+    # 발행 구성 바 (최대값 기준 %)
+    max_v = max(tbill, note, bond, tips, 0.1)
+    def pct(v): return round(v / max_v * 95)
+    breakdown = [
+        {"label": "T-Bills",     "amt": f"${tbill:.0f}B", "pct": pct(tbill), "color": "#f87171"},
+        {"label": "Notes(2~7Y)", "amt": f"${note:.0f}B",  "pct": pct(note),  "color": "#60a5fa"},
+        {"label": "Bonds(10~30Y)","amt": f"${bond:.0f}B", "pct": pct(bond),  "color": "#fbbf24"},
+        {"label": "TIPS",        "amt": f"${tips:.0f}B",  "pct": pct(tips),  "color": "#a78bfa"},
+    ]
+
+    # QRA 발표 일정 (분기 마지막 월요일 기준 ~4월말·7월말·10월말·1월말)
+    schedule = [
+        {"label": "Q1: 2026-01-27 완료", "current": False},
+        {"label": "Q2: 2026-04-28 예정", "current": True},
+        {"label": "Q3: 2026-07-27 예정", "current": False},
+        {"label": "Q4: 2026-10-27 예정", "current": False},
+    ]
+
+    def fmt_b(v): return f"${v:.0f}B" if v >= 1 else f"${v*1000:.0f}M"
+
+    print(f"QRA 완료: {len(raw)}건, total={fmt_b(total)}, bill={fmt_b(tbill)}, note={fmt_b(note)}")
+    return {
+        "next_qra":   "2026-04-28",
+        "tbill_30d":  fmt_b(tbill),
+        "coupon_30d": fmt_b(note + bond),
+        "tips_30d":   fmt_b(tips),
+        "total_30d":  fmt_b(total),
+        "avg_btc":    f"{avg_btc:.2f}x" if avg_btc else "—",
+        "breakdown":  breakdown,
+        "schedule":   schedule,
+        "auctions":   auctions,
+        "start_date": start,
+    }
+
+
 def fmt_val(v):
     if abs(v) >= 1_000:
         return f"{v/1_000:.2f}T"
@@ -1029,10 +1260,22 @@ def refresh_dts():
         print(f"[{datetime.now().strftime('%H:%M:%S')}] DTS 오류: {e}")
 
 
+def refresh_qra():
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] QRA 갱신 시작...")
+    try:
+        cache["qra_data"]  = fetch_qra_data()
+        cache["qra_error"] = None
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] QRA 완료")
+    except Exception as e:
+        cache["qra_error"] = str(e)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] QRA 오류: {e}")
+
+
 def refresh_data():
     refresh_nl()
     refresh_tic()
     refresh_dts()
+    refresh_qra()
 
 
 def start_scheduler():
@@ -1041,10 +1284,10 @@ def start_scheduler():
     scheduler.add_job(refresh_nl,  CronTrigger(hour=7,  minute=0,  timezone=KST), id="spx_daily")
     scheduler.add_job(refresh_nl,  CronTrigger(day_of_week="thu", hour=5, minute=30, timezone=KST), id="h41_weekly")
     scheduler.add_job(refresh_tic, CronTrigger(day=18,  hour=2,   minute=0,  timezone=KST), id="tic_monthly")
-    # DTS: 평일 오전 9시 KST (전날 DTS 약 ~08:30 KST 공개)
-    scheduler.add_job(refresh_dts, CronTrigger(day_of_week="mon-fri", hour=9, minute=0, timezone=KST), id="dts_daily")
+    scheduler.add_job(refresh_dts, CronTrigger(day_of_week="mon-fri", hour=9, minute=0,  timezone=KST), id="dts_daily")
+    scheduler.add_job(refresh_qra, CronTrigger(day_of_week="mon-fri", hour=9, minute=10, timezone=KST), id="qra_daily")
     scheduler.start()
-    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=18일 02:00 / DTS=평일 09:00 (KST)")
+    print("스케줄러: RRP=00:30 / SPX=07:00 / H.4.1=목 05:30 / TIC=18일 02:00 / DTS=평일 09:00 / QRA=평일 09:10 (KST)")
     return scheduler
 
 
@@ -1071,6 +1314,8 @@ def index():
         dts_balance=cache.get("dts_balance") or [],
         dts_date=cache.get("dts_date") or "—",
         dts_error=cache.get("dts_error"),
+        qra_data=cache.get("qra_data"),
+        qra_error=cache.get("qra_error"),
     )
 
 
