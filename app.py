@@ -156,14 +156,21 @@ HTML_TEMPLATE = """
     .auction-type-cell{position:relative;text-align:left !important;}
     .auction-tip{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:200;
       background:#1a1a22;border:1px solid rgba(255,255,255,0.12);border-radius:8px;
-      padding:10px 12px;width:260px;pointer-events:none;}
+      padding:10px 12px;width:220px;pointer-events:none;word-break:keep-all;line-height:1.5;}
     .auction-type-cell:hover .auction-tip{display:block;}
-    .auction-tip-title{font-size:12px;font-weight:500;color:#fff;margin-bottom:5px;}
-    .auction-tip-body{font-size:11px;color:rgba(255,255,255,0.45);line-height:1.6;margin-bottom:6px;}
-    .auction-tip-liq{font-size:11px;display:flex;gap:4px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.07);}
+    .auction-tip-title{font-size:11px;font-weight:500;color:#fff;margin-bottom:4px;}
+    .auction-tip-body{font-size:11px;color:rgba(255,255,255,0.45);line-height:1.55;margin-bottom:5px;}
+    .auction-tip-liq{font-size:11px;display:flex;gap:4px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.07);flex-wrap:wrap;}
     .auction-tip-lql{color:rgba(255,255,255,0.25);}
     .auction-tip-neg{color:#f87171;font-weight:500;}
     .auction-tip-neu{color:rgba(255,255,255,0.4);font-weight:500;}
+    /* 응찰률/금리 툴팁 */
+    .tip-cell{position:relative;}
+    .tip-cell .mini-tip{display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:200;
+      background:#1a1a22;border:1px solid rgba(255,255,255,0.12);border-radius:8px;
+      padding:8px 10px;width:200px;pointer-events:none;font-size:11px;line-height:1.55;color:rgba(255,255,255,0.45);}
+    .tip-cell:hover .mini-tip{display:block;}
+    .mini-tip b{color:rgba(255,255,255,0.75);font-weight:500;}
     /* 인라인 탭 (DTS/QRA) */
     .itab-row{display:flex;gap:4px;margin-bottom:10px;}
     .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
@@ -432,8 +439,21 @@ HTML_TEMPLATE = """
               </td>
               <td style="text-align:left;color:rgba(255,255,255,0.4);">{{ r.term }}</td>
               <td>{{ r.amt }}</td>
-              <td><span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }}">{{ r.btc }}</span></td>
-              <td>{{ r.rate }}</td>
+              <td class="tip-cell">
+                <span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }}">{{ r.btc }}</span>
+                <div class="mini-tip">
+                  <b>응찰률 (Bid-to-Cover)</b><br>
+                  경쟁 입찰 제출액 ÷ 낙찰액. 수요 강도 지표.<br>
+                  <span style="color:#34d399;">2.3x↑</span> 수요 양호 &nbsp;·&nbsp; <span style="color:#f87171;">2.3x↓</span> 수요 부족 경고
+                </div>
+              </td>
+              <td class="tip-cell">
+                {{ r.rate }}
+                <div class="mini-tip">
+                  <b>낙찰 금리/할인율</b><br>
+                  {% if r.is_bill %}T-Bill: 할인율(Discount Rate) 기준. 높을수록 단기 자금 비용↑.{% else %}쿠폰채: 최고 낙찰 수익률(High Yield). 높을수록 재정 이자 부담↑ · NL 장기 압박.{% endif %}
+                </div>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -1033,6 +1053,7 @@ def fetch_qra_data():
             "tip_body":  ti["body"],
             "tip_liq":   ti["liq"],
             "tip_neg":   ti["neg"],
+            "is_bill":   stype == "Bill",
         })
 
     auctions = sorted(auctions, key=lambda x: x["date"], reverse=True)[:20]
