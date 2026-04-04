@@ -773,7 +773,11 @@ def fetch_dts_data():
     wit_list = [{"name": k, "amt": fmt_mil(v)} for k, v in wit_sorted]
 
     # ── Table I: TGA 잔액 — Table II 합계 행에서 추출 ──
-    # (2022-04-18 이후 operating_cash_balance의 close_today_bal은 null)
+    # 디버그: 실제 transaction_catg 값 출력
+    all_catgs = sorted(set(d.get("transaction_catg", "") for d in day_data))
+    print(f"[DTS DEBUG] 최신날짜={latest_date}, 전체 catg 목록:")
+    for c in all_catgs:
+        print(f"  catg: {repr(c)}")
     # Table II에 "Total TGA Deposits", "Total TGA Withdrawals", TGA Opening/Closing 행이 포함됨
     SUMMARY_KEYWORDS = [
         "Treasury General Account (TGA) Opening",
