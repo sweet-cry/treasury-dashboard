@@ -2,7 +2,7 @@
 Net Liquidity + 국가별 미국채 보유 Dashboard
 =============================================
 환경변수:
-  FRED_API_KEY : FRED API Key (필수)
+  FRED_API_KEY : FRED API Key
   START_DATE   : 시작일 (기본 2000-01-01)
   PORT         : Railway 자동 설정
 
@@ -32,6 +32,10 @@ START_DATE = os.environ.get("START_DATE", "2000-01-01")
 PORT       = int(os.environ.get("PORT", "5000"))
 KST        = pytz.timezone("Asia/Seoul")
 
+if not API_KEY:
+    import warnings
+    warnings.warn("FRED_API_KEY 환경변수가 설정되지 않았습니다. Vercel/Railway 환경변수에 추가하세요.")
+
 TIC_URL_HIST = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
 TIC_URL_CURR = "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt"
 TIC_COUNTRIES = ["Japan", "China, Mainland", "United Kingdom", "Luxembourg",
@@ -45,6 +49,7 @@ TIC_COLORS = {
 }
 
 app = Flask(__name__)
+cache_lock = threading.Lock()
 cache = {
     "chart1_html": None, "chart2_html": None,
     "summary": None, "table_rows": None,
@@ -189,6 +194,7 @@ HTML_TEMPLATE = """
     details.collapsible summary:hover{color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.02);}
     .collapsible-body{padding:14px 16px;border-top:1px solid rgba(255,255,255,0.06);}
   </style>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
   <script>
     window.onload=function(){
       {% if not summary and not error %}setTimeout(()=>location.reload(),10000);{% endif %}
@@ -731,6 +737,8 @@ HTML_TEMPLATE = """
 
 
 def fetch_series(series_id, start, frequency="d"):
+    if not API_KEY:
+        raise ValueError("FRED_API_KEY 환경변수가 설정되지 않았습니다. Vercel 대시보드 → Settings → Environment Variables에서 추가 후 Redeploy 하세요.")
     params = dict(series_id=series_id, api_key=API_KEY, file_type="json",
                   observation_start=start, frequency=frequency)
     print(f"  [{series_id}] API 요청 시작... (freq={frequency})")
@@ -753,7 +761,7 @@ def fetch_series(series_id, start, frequency="d"):
 
 
 def fetch_auto(series_id, start, preferred="d"):
-    for freq in dict.fromkeys([preferred, "waow", "w", "bw", "m"]):
+    for freq in dict.fromkeys([preferred, "w", "bw", "m"]):
         try:
             s = fetch_series(series_id, start, frequency=freq)
             if len(s) > 0:
@@ -766,9 +774,9 @@ def fetch_auto(series_id, start, preferred="d"):
 
 def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
-    walcl_w = fetch_series("WALCL", START_DATE, frequency="waow")
+    walcl_w = fetch_series("WALCL", START_DATE, frequency="w")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
-    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="waow")
+    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="w")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
     rrp_d, _ = fetch_auto("RRPONTSYD", START_DATE, preferred="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] SP500...")
@@ -832,7 +840,7 @@ def _parse_hist(text):
                         pass
                 if len(nums) >= 12:
                     for m_idx, v in enumerate(nums[:12]):
-                        month_num = 12 - m_idx
+                        month_num = m_idx + 1  # 1월=index0, 12월=index11
                         records.append({
                             "date": pd.to_datetime(f"{current_year}-{month_num:02d}-01"),
                             "country": clean, "value": v
@@ -1119,6 +1127,12 @@ def fetch_qra_data():
 
 
 def fmt_val(v):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if v != v:  # NaN check
+        return "—"
     if abs(v) >= 1_000:
         return f"{v/1_000:.2f}T"
     return f"{v:,.0f}B"
@@ -1129,14 +1143,14 @@ def build_nl_summary(df):
     prev = df.iloc[-2] if len(df) > 1 else None
     spx = latest["SP500"] if not pd.isna(latest["SP500"]) else None
     fv_nl = latest["FV_NL"] if "FV_NL" in latest.index and not pd.isna(latest["FV_NL"]) else None
-    chg = latest["NL"] - prev["NL"] if prev is not None else 0
+    chg = float(latest["NL"]) - float(prev["NL"]) if prev is not None and not pd.isna(latest["NL"]) and not pd.isna(prev["NL"]) else 0
 
     walcl_date = df["WALCL"].last_valid_index()
     tga_date   = df["TGA"].last_valid_index()
     rrp_date   = df["RRP"].last_valid_index()
 
     fv_nl_gap = fv_nl_cheap = None
-    if fv_nl and spx:
+    if fv_nl is not None and spx is not None and fv_nl != 0:
         gap = (spx - fv_nl) / fv_nl * 100
         fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'고평가' if gap>0 else '저평가'}"
         fv_nl_cheap = gap < 0
@@ -1169,7 +1183,7 @@ def build_nl_table(df):
         if spx and fv_nl:
             g = (spx - fv_nl) / fv_nl * 100
             gap = f"{'+' if g>0 else ''}{g:.1f}%"
-            gap_pos = g < 0
+            gap_pos = g >= 0  # 고평가(+)=badge-up(초록), 저평가(-)=badge-dn(빨강) — summary와 동일
         rows.append({
             "date": date.strftime("%Y-%m-%d"),
             "walcl": f"{row['WALCL']:,.0f}", "tga": f"{row['TGA']:,.0f}", "rrp": f"{row['RRP']:,.0f}",
@@ -1210,7 +1224,7 @@ def build_chart1(df):
     fig.update_xaxes(**grid)
     fig.update_yaxes(**grid, title_text="Billions USD", title_font=dict(size=10, color="rgba(255,255,255,0.3)"),
                      tickformat=",", ticksuffix="B")
-    return fig.to_html(include_plotlyjs="cdn", full_html=False, config={"displayModeBar": False})
+    return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
 
 def build_chart2(df):
@@ -1318,14 +1332,15 @@ def refresh_nl():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] NL 갱신 시작...")
     try:
         df, model_info = build_nl_data()
-        cache["summary"]     = build_nl_summary(df)
-        cache["chart1_html"] = build_chart1(df)
-        cache["chart2_html"] = build_chart2(df)
-        cache["table_rows"]  = build_nl_table(df)
-        cache["model_info"]  = model_info
-        cache["updated_at"]  = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
-        cache["next_h41"]    = next_thursday_kst()
-        cache["error"] = None
+        with cache_lock:
+            cache["summary"]     = build_nl_summary(df)
+            cache["chart1_html"] = build_chart1(df)
+            cache["chart2_html"] = build_chart2(df)
+            cache["table_rows"]  = build_nl_table(df)
+            cache["model_info"]  = model_info
+            cache["updated_at"]  = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
+            cache["next_h41"]    = next_thursday_kst()
+            cache["error"] = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] NL 완료")
     except Exception as e:
         cache["error"] = str(e)
@@ -1336,10 +1351,11 @@ def refresh_tic():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] TIC 갱신 시작...")
     try:
         pivot = fetch_tic_data()
-        cache["tic_chart_html"] = build_tic_chart(pivot)
-        cache["tic_table"]      = build_tic_table(pivot)
-        cache["tic_updated_at"] = pivot.index[-1].strftime("%Y-%m")
-        cache["tic_error"] = None
+        with cache_lock:
+            cache["tic_chart_html"] = build_tic_chart(pivot)
+            cache["tic_table"]      = build_tic_table(pivot)
+            cache["tic_updated_at"] = pivot.index[-1].strftime("%Y-%m")
+            cache["tic_error"] = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] TIC 완료")
     except Exception as e:
         cache["tic_error"] = str(e)
@@ -1350,11 +1366,12 @@ def refresh_dts():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] DTS 갱신 시작...")
     try:
         dep, wit, bal, date = fetch_dts_data()
-        cache["dts_deposits"]    = dep
-        cache["dts_withdrawals"] = wit
-        cache["dts_balance"]     = bal
-        cache["dts_date"]        = date
-        cache["dts_error"]       = None
+        with cache_lock:
+            cache["dts_deposits"]    = dep
+            cache["dts_withdrawals"] = wit
+            cache["dts_balance"]     = bal
+            cache["dts_date"]        = date
+            cache["dts_error"]       = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] DTS 완료: {date}")
     except Exception as e:
         cache["dts_error"] = str(e)
@@ -1364,8 +1381,9 @@ def refresh_dts():
 def refresh_qra():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] QRA 갱신 시작...")
     try:
-        cache["qra_data"]  = fetch_qra_data()
-        cache["qra_error"] = None
+        with cache_lock:
+            cache["qra_data"]  = fetch_qra_data()
+            cache["qra_error"] = None
         print(f"[{datetime.now().strftime('%H:%M:%S')}] QRA 완료")
     except Exception as e:
         cache["qra_error"] = str(e)
