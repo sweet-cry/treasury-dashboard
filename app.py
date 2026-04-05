@@ -753,7 +753,7 @@ def fetch_series(series_id, start, frequency="d"):
 
 
 def fetch_auto(series_id, start, preferred="d"):
-    for freq in [preferred, "d", "waow", "w", "bw", "m"]:
+    for freq in dict.fromkeys([preferred, "waow", "w", "bw", "m"]):
         try:
             s = fetch_series(series_id, start, frequency=freq)
             if len(s) > 0:
