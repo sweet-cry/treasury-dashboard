@@ -733,8 +733,14 @@ HTML_TEMPLATE = """
 def fetch_series(series_id, start, frequency="d"):
     params = dict(series_id=series_id, api_key=API_KEY, file_type="json",
                   observation_start=start, frequency=frequency)
-    r = req.get(FRED_BASE, params=params, timeout=30)
-    r.raise_for_status()
+    print(f"  [{series_id}] API 요청 시작... (freq={frequency})")
+    try:
+        r = req.get(FRED_BASE, params=params, timeout=30)
+        print(f"  [{series_id}] 응답 수신: {r.status_code}")
+        r.raise_for_status()
+    except Exception as e:
+        print(f"  [{series_id}] 요청 실패: {e}")
+        raise
     data = r.json()
     if "error_message" in data:
         raise ValueError(f"{series_id}: {data['error_message']}")
