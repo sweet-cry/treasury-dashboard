@@ -246,7 +246,7 @@ def build_nl_table(df):
             "walcl": f"{row['WALCL']:,.0f}", "tga": f"{row['TGA']:,.0f}", "rrp": f"{row['RRP']:,.0f}",
             "nl": f"{row['NL']:,.0f}",
             "dod": f"{'▲' if dod>0 else ('▼' if dod<0 else '─')}{abs(round(dod)):,.0f}" if dod is not None else "—",
-            "dod_pos": True if dod is None or round(dod)==0 else dod > 0,
+            "dod_pos": None if dod is None or round(dod)==0 else dod > 0,
             "spx": f"{spx:,.0f}" if spx else "—",
             "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
             "gap": gap, "gap_pos": gap_pos,
@@ -1402,9 +1402,9 @@ HTML_TEMPLATE = """
         <tr>
           <td>{{ row.date }}</td><td>{{ row.walcl }}</td><td>{{ row.tga }}</td><td>{{ row.rrp }}</td>
           <td><strong>{{ row.nl }}</strong></td>
-          <td>{% if row.dod_pos is not none %}<span class="{{ 'badge-up' if row.dod_pos else 'badge-dn' }}">{{ row.dod }}</span>{% else %}—{% endif %}</td>
+          <td>{% if row.dod_pos is none %}<span style="color:rgba(255,255,255,0.3);font-size:11px;">{{ row.dod }}</span>{% elif row.dod_pos %}<span class="badge-up">{{ row.dod }}</span>{% else %}<span class="badge-dn">{{ row.dod }}</span>{% endif %}</td>
           <td>{{ row.spx }}</td><td>{{ row.fv_nl }}</td>
-          <td>{% if row.gap is not none %}<span class="{{ 'badge-up' if row.gap_pos else 'badge-dn' }}">{{ row.gap }}</span>{% else %}—{% endif %}</td>
+          <td>{% if row.gap is not none %}<span class="{{ 'badge-dn' if row.gap_pos else 'badge-up' }}">{{ row.gap }}</span>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
