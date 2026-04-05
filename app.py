@@ -753,7 +753,7 @@ def fetch_series(series_id, start, frequency="d"):
 
 
 def fetch_auto(series_id, start, preferred="d"):
-    for freq in [preferred, "w", "bw", "m"]:
+    for freq in [preferred, "d", "waow", "w", "bw", "m"]:
         try:
             s = fetch_series(series_id, start, frequency=freq)
             if len(s) > 0:
@@ -768,9 +768,9 @@ def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
     walcl_w = fetch_series("WALCL", START_DATE, frequency="waow")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
-    tga_d = fetch_series("WDTGAL", START_DATE, frequency="waow")
+    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
-    rrp_d = fetch_series("RRPONTSYD", START_DATE, frequency="d")
+    rrp_d, _ = fetch_auto("RRPONTSYD", START_DATE, preferred="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] SP500...")
     try:
         spx_d, _ = fetch_auto("SP500", START_DATE, preferred="d")
