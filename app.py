@@ -95,7 +95,7 @@ def db_set(key, value):
                     ON CONFLICT (key) DO UPDATE
                       SET value = EXCLUDED.value,
                           updated_at = NOW()
-                """, (key, json.dumps(value, default=str)))
+                """, (key, json.dumps(value)))
             conn.commit()
     except Exception as e:
         print(f"[DB SET ERROR] {key}: {e}")
