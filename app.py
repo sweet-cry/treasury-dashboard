@@ -733,14 +733,8 @@ HTML_TEMPLATE = """
 def fetch_series(series_id, start, frequency="d"):
     params = dict(series_id=series_id, api_key=API_KEY, file_type="json",
                   observation_start=start, frequency=frequency)
-    print(f"  [{series_id}] API 요청 시작... (freq={frequency})")
-    try:
-        r = req.get(FRED_BASE, params=params, timeout=30)
-        print(f"  [{series_id}] 응답 수신: {r.status_code}")
-        r.raise_for_status()
-    except Exception as e:
-        print(f"  [{series_id}] 요청 실패: {e}")
-        raise
+    r = req.get(FRED_BASE, params=params, timeout=30)
+    r.raise_for_status()
     data = r.json()
     if "error_message" in data:
         raise ValueError(f"{series_id}: {data['error_message']}")
@@ -753,7 +747,7 @@ def fetch_series(series_id, start, frequency="d"):
 
 
 def fetch_auto(series_id, start, preferred="d"):
-    for freq in dict.fromkeys([preferred, "waow", "w", "bw", "m"]):
+    for freq in [preferred, "w", "bw", "m"]:
         try:
             s = fetch_series(series_id, start, frequency=freq)
             if len(s) > 0:
@@ -766,9 +760,9 @@ def fetch_auto(series_id, start, preferred="d"):
 
 def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
-    walcl_w = fetch_series("WALCL", START_DATE, frequency="waow")
+    walcl_w = fetch_series("WALCL", START_DATE, frequency="w")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
-    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="waow")
+    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
     rrp_d, _ = fetch_auto("RRPONTSYD", START_DATE, preferred="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] SP500...")
@@ -1431,7 +1425,7 @@ def health():
     return "ok"
 
 
-threading.Thread(target=lambda: (refresh_data(), start_scheduler()), daemon=False).start()
+threading.Thread(target=lambda: (refresh_data(), start_scheduler()), daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
