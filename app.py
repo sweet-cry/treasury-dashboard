@@ -766,7 +766,7 @@ def fetch_auto(series_id, start, preferred="d"):
 
 def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
-    walcl_w = fetch_series("WALCL", START_DATE, frequency="w")
+    walcl_w = fetch_series("WALCL", START_DATE, frequency="waow")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
     tga_d = fetch_series("WDTGAL", START_DATE, frequency="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
