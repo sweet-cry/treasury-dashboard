@@ -762,9 +762,9 @@ def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
     walcl_w = fetch_series("WALCL", START_DATE, frequency="w")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
-    tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="d")
+    tga_d = fetch_series("WDTGAL", START_DATE, frequency="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
-    rrp_d, _ = fetch_auto("RRPONTSYD", START_DATE, preferred="d")
+    rrp_d = fetch_series("RRPONTSYD", START_DATE, frequency="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] SP500...")
     try:
         spx_d, _ = fetch_auto("SP500", START_DATE, preferred="d")
@@ -1425,7 +1425,7 @@ def health():
     return "ok"
 
 
-threading.Thread(target=lambda: (refresh_data(), start_scheduler()), daemon=True).start()
+threading.Thread(target=lambda: (refresh_data(), start_scheduler()), daemon=False).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
