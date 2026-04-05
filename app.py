@@ -768,7 +768,7 @@ def build_nl_data():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WALCL...")
     walcl_w = fetch_series("WALCL", START_DATE, frequency="waow")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] WDTGAL...")
-    tga_d = fetch_series("WDTGAL", START_DATE, frequency="d")
+    tga_d = fetch_series("WDTGAL", START_DATE, frequency="waow")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] RRPONTSYD...")
     rrp_d = fetch_series("RRPONTSYD", START_DATE, frequency="d")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] SP500...")
