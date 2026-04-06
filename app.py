@@ -1,15 +1,14 @@
 """
-Net Liquidity + 援??蹂?誘멸뎅梨?蹂댁쑀 Dashboard
+Net Liquidity + ???癰?沃섎㈇?낉㎖?癰귣똻? Dashboard
 =============================================
-Vercel + Neon(PostgreSQL) 踰꾩쟾
-
-?섍꼍蹂??
+Vercel + Neon(PostgreSQL) 甕곌쑴??
+??띻펾癰궰??
   FRED_API_KEY  : FRED API Key
-  DATABASE_URL  : Neon PostgreSQL ?곌껐 臾몄옄??  START_DATE    : ?쒖옉??(湲곕낯 2000-01-01)
-  CRON_SECRET   : Cron ?붾뱶?ъ씤??蹂댄샇???쒗겕由???
-?낅뜲?댄듃 ?ㅼ?以?(vercel.json cron):
-  - NL/DTS/QRA : 留ㅼ씪 00:30 UTC
-  - TIC        : 留ㅼ썡 18??02:00 UTC
+  DATABASE_URL  : Neon PostgreSQL ?怨뚭퍙 ?얜챷???  START_DATE    : ??뽰삂??(疫꿸퀡??2000-01-01)
+  CRON_SECRET   : Cron ?遺얜굡?????癰귣똾?????쀪쾿????
+??낅쑓??꾨뱜 ???餓?(vercel.json cron):
+  - NL/DTS/QRA : 筌띲끉??00:30 UTC
+  - TIC        : 筌띲끉??18??02:00 UTC
 """
 
 import os
@@ -49,16 +48,16 @@ FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 app = Flask(__name__)
 
 
-# ??????????????????????????????????????????????
-# Neon DB ?좏떥
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# Neon DB ?醫뤿뼢
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
 def init_db():
-    """罹먯떆 ?뚯씠釉?珥덇린??(理쒖큹 1??"""
+    """筌?Ŋ?????뵠???λ뜃由??(筌ㅼ뮇??1??"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -112,13 +111,13 @@ def db_get_updated_at(key):
         return None
 
 
-# ??????????????????????????????????????????????
-# FRED ?곗씠??fetch
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# FRED ?怨쀬뵠??fetch
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def fetch_series(series_id, start, frequency="d"):
     if not API_KEY:
-        raise ValueError("FRED_API_KEY ?섍꼍蹂?섍? ?ㅼ젙?섏? ?딆븯?듬땲??")
+        raise ValueError("FRED_API_KEY ??띻펾癰궰??? ??쇱젟??? ??녿릭??щ빍??")
     params = dict(series_id=series_id, api_key=API_KEY, file_type="json",
                   observation_start=start, frequency=frequency)
     r = req.get(FRED_BASE, params=params, timeout=30)
@@ -128,7 +127,7 @@ def fetch_series(series_id, start, frequency="d"):
         raise ValueError(f"{series_id}: {data['error_message']}")
     obs = [(o["date"], float(o["value"])) for o in data["observations"] if o["value"] != "."]
     if not obs:
-        raise ValueError(f"{series_id}: ?곗씠???놁쓬")
+        raise ValueError(f"{series_id}: ?怨쀬뵠????곸벉")
     s = pd.Series(dict(obs), name=series_id)
     s.index = pd.to_datetime(s.index)
     return s
@@ -142,12 +141,11 @@ def fetch_auto(series_id, start, preferred="d"):
                 return s, freq
         except Exception:
             continue
-    raise ValueError(f"{series_id}: ?ъ슜 媛?ν븳 frequency ?놁쓬")
+    raise ValueError(f"{series_id}: ????揶쎛?館釉?frequency ??곸벉")
 
 
-# ??????????????????????????????????????????????
-# NL 怨꾩궛
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# NL ?④쑴沅?# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def fmt_val(v):
     try:
@@ -171,6 +169,18 @@ def build_nl_data():
         spx_d = pd.Series(dtype=float, name="SP500")
 
     # yfinance fallback: FRED보다 최신 데이터 보완
+    try:
+        import yfinance as yf
+        yf_spx = yf.download("^GSPC", start=START_DATE, progress=False, auto_adjust=True)["Close"]
+        yf_spx.index = pd.to_datetime(yf_spx.index).tz_localize(None)
+        yf_spx.name = "SP500"
+        missing = yf_spx.index.difference(spx_d.index)
+        if len(missing) > 0:
+            spx_d = pd.concat([spx_d, yf_spx.loc[missing]]).sort_index()
+    except Exception:
+        pass
+
+    # yfinance fallback: FRED蹂대떎 理쒖떊 ?곗씠??蹂댁셿
     try:
         import yfinance as yf
         yf_spx = yf.download("^GSPC", start=START_DATE, progress=False, auto_adjust=True)["Close"]
@@ -219,7 +229,7 @@ def build_nl_summary(df):
     fv_nl_gap = fv_nl_cheap = None
     if fv_nl is not None and spx is not None and fv_nl != 0:
         gap = (spx - fv_nl) / fv_nl * 100
-        fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'怨좏룊媛' if gap>0 else '??됯?'}"
+        fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'?⑥쥚猷듿첎?' if gap>0 else '?????'}"
         fv_nl_cheap = gap < 0
 
     return {
@@ -234,7 +244,7 @@ def build_nl_summary(df):
         "rrp_date": rrp_date.strftime("%m-%d") if rrp_date else "??,
         "spx_raw": f"{spx:,.0f}" if spx else "??,
         "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "??,
-        "fv_nl_gap": fv_nl_gap or "?곗씠??遺議?, "fv_nl_cheap": fv_nl_cheap,
+        "fv_nl_gap": fv_nl_gap or "?怨쀬뵠???봔鈺?, "fv_nl_cheap": fv_nl_cheap,
     }
 
 
@@ -255,7 +265,7 @@ def build_nl_table(df):
             "date": date.strftime("%Y-%m-%d"),
             "walcl": f"{row['WALCL']:,.0f}", "tga": f"{row['TGA']:,.0f}", "rrp": f"{row['RRP']:,.0f}",
             "nl": f"{row['NL']:,.0f}",
-            "dod": f"{'?? if dod>0 else ('?? if dod<0 else '?')}{abs(round(dod)):,.0f}" if dod is not None else "??,
+            "dod": f"{'?? if dod>0 else ('?? if dod<0 else '??')}{abs(round(dod)):,.0f}" if dod is not None else "??,
             "dod_pos": None if dod is None or round(dod)==0 else dod > 0,
             "spx": f"{spx:,.0f}" if spx else "??,
             "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "??,
@@ -294,12 +304,12 @@ def build_chart1(df):
 def build_chart2(df):
     recession_periods = [("2001-03-01","2001-11-01"),("2007-12-01","2009-06-01"),("2020-02-01","2020-04-01")]
     fiscal_events = [
-        {"month": 2, "label": "?섍툒 ?쇳겕", "color": "rgba(52,211,153,0.5)"},
-        {"month": 3, "label": "?섍툒 ?쇳겕", "color": "rgba(52,211,153,0.5)"},
+        {"month": 2, "label": "??랁닋 ??녠쾿", "color": "rgba(52,211,153,0.5)"},
+        {"month": 3, "label": "??랁닋 ??녠쾿", "color": "rgba(52,211,153,0.5)"},
         {"month": 4, "label": "Tax Day",   "color": "rgba(248,113,113,0.6)"},
-        {"month": 6, "label": "2Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
-        {"month": 9, "label": "3Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
-        {"month": 1, "label": "4Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
+        {"month": 6, "label": "2Q ?곕뗄???, "color": "rgba(251,191,36,0.5)"},
+        {"month": 9, "label": "3Q ?곕뗄???, "color": "rgba(251,191,36,0.5)"},
+        {"month": 1, "label": "4Q ?곕뗄???, "color": "rgba(251,191,36,0.5)"},
     ]
     fig = go.Figure()
     for s, e in recession_periods:
@@ -319,7 +329,7 @@ def build_chart2(df):
         name="S&P 500", line=dict(color="#e2e2e2", width=2)))
     if "FV_NL" in df.columns and df["FV_NL"].notna().any():
         fig.add_trace(go.Scatter(x=df.index.strftime("%Y-%m-%d").tolist(), y=df["FV_NL"].tolist(),
-            name="NL ?뚭? FV", line=dict(color="#60a5fa", width=1.5, dash="dot")))
+            name="NL ??? FV", line=dict(color="#60a5fa", width=1.5, dash="dot")))
     spx_vals = df["SP500"].dropna()
     spx_min = int(spx_vals.min() * 0.9) if len(spx_vals) else 500
     spx_max = int(spx_vals.max() * 1.05) if len(spx_vals) else 7500
@@ -336,9 +346,9 @@ def build_chart2(df):
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
 
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 # TIC
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def _parse_hist(text):
     records = []
@@ -416,7 +426,7 @@ def fetch_tic_data():
     r_curr.raise_for_status()
     records = _parse_hist(r_hist.text) + _parse_curr(r_curr.text)
     if not records:
-        raise ValueError("TIC ?곗씠???뚯떛 ?ㅽ뙣")
+        raise ValueError("TIC ?怨쀬뵠?????뼓 ??쎈솭")
     df = pd.DataFrame(records)
     df = df.sort_values("date").drop_duplicates(subset=["date", "country"], keep="last")
     pivot = df.pivot(index="date", columns="country", values="value").sort_index()
@@ -472,9 +482,9 @@ def build_tic_table(pivot):
     return rows[:15]
 
 
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 # DTS
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def fmt_mil(v):
     try:
@@ -500,7 +510,7 @@ def fetch_dts_data():
     r2.raise_for_status()
     data2 = r2.json().get("data", [])
     if not data2:
-        raise ValueError("DTS Table II ?곗씠???놁쓬")
+        raise ValueError("DTS Table II ?怨쀬뵠????곸벉")
 
     latest_date = data2[0]["record_date"]
     day_data = [d for d in data2 if d["record_date"] == latest_date]
@@ -531,23 +541,23 @@ def fetch_dts_data():
     total_wit = sum(withdrawals.values())
     net = total_dep - total_wit
     balance_list = [
-        {"name": "珥??낃툑 (Total Deposits)",    "amt": fmt_mil(total_dep), "pos": True},
-        {"name": "珥?異쒓툑 (Total Withdrawals)", "amt": fmt_mil(total_wit), "pos": False},
-        {"name": f"?뱀씪 ?쒕???({'?좎엯' if net>=0 else '?좎텧'})", "amt": fmt_mil(abs(net)), "pos": net >= 0},
+        {"name": "????껎닊 (Total Deposits)",    "amt": fmt_mil(total_dep), "pos": True},
+        {"name": "???곗뮄??(Total Withdrawals)", "amt": fmt_mil(total_wit), "pos": False},
+        {"name": f"?諭???????({'?醫롮뿯' if net>=0 else '?醫롰뀱'})", "amt": fmt_mil(abs(net)), "pos": net >= 0},
     ]
     return dep_list, wit_list, balance_list, latest_date
 
 
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 # QRA
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 TIP_INFO = {
-    "Bill": {"title": "Treasury Bill", "body": "留뚭린 1???댄븯 ?④린 援?콈. MMF媛 二쇱슂 留ㅼ닔????T-Bill 諛쒗뻾????RRP???곸뇙 ??NL 異⑷꺽 ?쒗븳.", "liq": "NL ?곹뼢 ?쒗븳 (RRP ?곸뇙)", "neg": False},
-    "Note": {"title": "Treasury Note (2~10Y)", "body": "以묎린 援?콈. ??됀룹뿰湲곌툑 留ㅼ닔 ??以鍮꾧툑 吏곸젒 ?≪닔 ??NL ?섎씫 ?뺣젰.", "liq": "???以鍮꾧툑 ?≪닔 ??NL??, "neg": True},
-    "Bond": {"title": "Treasury Bond (20~30Y)", "body": "?κ린 援?콈. ??덉씠???믪븘 ?κ린 湲덈━ 誘쇨컧.", "liq": "?κ린湲덈━ 寃쎈줈濡?媛꾩젒 NL ?뺣컯", "neg": True},
-    "TIPS": {"title": "TIPS (臾쇨??곕룞)", "body": "?먭툑??CPI???곕룞. ?ㅼ쭏湲덈━ 吏??", "liq": "?ㅼ쭏湲덈━ 吏????吏곸젒 ?④낵 ?쒗븳??, "neg": False},
-    "FRN":  {"title": "FRN (蹂?숆툑由ъ콈)", "body": "13二?T-Bill 湲덈━???곕룞. ?④린臾쇱뿉 媛源뚯슫 ?좊룞???뱀꽦.", "liq": "?④린臾??좎궗 ??NL ?곹뼢 ?쒗븳??, "neg": False},
+    "Bill": {"title": "Treasury Bill", "body": "筌띾슡由?1????꾨릭 ??ｋ┛ ??肄? MMF揶쎛 雅뚯눘??筌띲끉?????T-Bill 獄쏆뮉六????RRP???怨몃뇵 ??NL ?겸뫕爰???쀫립.", "liq": "NL ?怨밸샨 ??쀫립 (RRP ?怨몃뇵)", "neg": False},
+    "Note": {"title": "Treasury Note (2~10Y)", "body": "餓λ쵌由???肄? ????猷밸염疫꿸퀗??筌띲끉????餓Β??쑨??筌욊낯????る땾 ??NL ??롮뵭 ?類ｌ젾.", "liq": "????餓Β??쑨????る땾 ??NL??, "neg": True},
+    "Bond": {"title": "Treasury Bond (20~30Y)", "body": "?觀由???肄? ????됱뵠???誘る툡 ?觀由?疫뀀뜄??沃섏눊而?", "liq": "?觀由경묾?댿봺 野껋럥以덃에?揶쏄쑴??NL ?類ｌ뺏", "neg": True},
+    "TIPS": {"title": "TIPS (?얠눊??怨뺣짗)", "body": "?癒?닊??CPI???怨뺣짗. ??쇱춳疫뀀뜄??筌왖??", "liq": "??쇱춳疫뀀뜄??筌왖????筌욊낯????ｋ궢 ??쀫립??, "neg": False},
+    "FRN":  {"title": "FRN (癰궰??놃닊?귐딆퐟)", "body": "13雅?T-Bill 疫뀀뜄????怨뺣짗. ??ｋ┛?얠눘肉?揶쎛繹먮슣???醫딅짗???諭苑?", "liq": "??ｋ┛???醫롪텢 ??NL ?怨밸샨 ??쀫립??, "neg": False},
 }
 
 
@@ -563,7 +573,7 @@ def fetch_qra_data():
     r.raise_for_status()
     raw = r.json()
     if not raw:
-        raise ValueError("QRA 寃쎈ℓ ?곗씠???놁쓬")
+        raise ValueError("QRA 野껋럥???怨쀬뵠????곸벉")
 
     TYPE_MAP = {
         "Bill": {"label": "T-Bill", "bg": "rgba(248,113,113,0.12)", "color": "#f87171"},
@@ -627,10 +637,10 @@ def fetch_qra_data():
         {"label": "TIPS",         "amt": f"${tips:.0f}B",  "pct": pct(tips),  "color": "#a78bfa"},
     ]
     schedule = [
-        {"label": "Q1: 2026-01-27 ?꾨즺", "current": False},
-        {"label": "Q2: 2026-04-28 ?덉젙", "current": True},
-        {"label": "Q3: 2026-07-27 ?덉젙", "current": False},
-        {"label": "Q4: 2026-10-27 ?덉젙", "current": False},
+        {"label": "Q1: 2026-01-27 ?袁⑥┷", "current": False},
+        {"label": "Q2: 2026-04-28 ??됱젟", "current": True},
+        {"label": "Q3: 2026-07-27 ??됱젟", "current": False},
+        {"label": "Q4: 2026-10-27 ??됱젟", "current": False},
     ]
     def fmt_b(v): return f"${v:.0f}B" if v >= 1 else f"${v*1000:.0f}M"
     return {
@@ -643,9 +653,9 @@ def fetch_qra_data():
     }
 
 
-# ??????????????????????????????????????????????
-# Cron 媛깆떊 ?⑥닔 (Neon?????
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# Cron 揶쏄퉮????λ땾 (Neon??????
+# ????????????????????????????????????????????????????????????????????????????????????????????
 
 def next_thursday_kst():
     now = datetime.now(KST)
@@ -665,10 +675,10 @@ def run_refresh_nl():
         db_set("nl_model",     model_info)
         db_set("nl_next_h41",  next_thursday_kst())
         db_set("nl_error",     None)
-        print("NL 媛깆떊 ?꾨즺")
+        print("NL 揶쏄퉮???袁⑥┷")
     except Exception as e:
         db_set("nl_error", str(e))
-        print(f"NL ?ㅻ쪟: {e}")
+        print(f"NL ??살첒: {e}")
 
 
 def run_refresh_tic():
@@ -678,10 +688,10 @@ def run_refresh_tic():
         db_set("tic_table",      build_tic_table(pivot))
         db_set("tic_updated_at", pivot.index[-1].strftime("%Y-%m"))
         db_set("tic_error",      None)
-        print("TIC 媛깆떊 ?꾨즺")
+        print("TIC 揶쏄퉮???袁⑥┷")
     except Exception as e:
         db_set("tic_error", str(e))
-        print(f"TIC ?ㅻ쪟: {e}")
+        print(f"TIC ??살첒: {e}")
 
 
 def run_refresh_dts():
@@ -692,24 +702,24 @@ def run_refresh_dts():
         db_set("dts_balance",     bal)
         db_set("dts_date",        date)
         db_set("dts_error",       None)
-        print(f"DTS 媛깆떊 ?꾨즺: {date}")
+        print(f"DTS 揶쏄퉮???袁⑥┷: {date}")
     except Exception as e:
         db_set("dts_error", str(e))
-        print(f"DTS ?ㅻ쪟: {e}")
+        print(f"DTS ??살첒: {e}")
 
 
 def run_refresh_qra():
     try:
         db_set("qra_data",  fetch_qra_data())
         db_set("qra_error", None)
-        print("QRA 媛깆떊 ?꾨즺")
+        print("QRA 揶쏄퉮???袁⑥┷")
     except Exception as e:
         db_set("qra_error", str(e))
-        print(f"QRA ?ㅻ쪟: {e}")
+        print(f"QRA ??살첒: {e}")
 
 
-# ??????????????????????????????????????????????
-# Flask ?쇱슦??# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# Flask ??깆뒭??# ????????????????????????????????????????????????????????????????????????????????????????????
 
 @app.route("/")
 def index():
@@ -803,22 +813,20 @@ def health():
     return "ok"
 
 
-# ??????????????????????????????????????????????
-# DB 珥덇린??+ 泥??곗씠??濡쒕뵫
-# ??????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????
+# DB ?λ뜃由??+ 筌??怨쀬뵠??嚥≪뮆逾?# ????????????????????????????????????????????????????????????????????????????????????????????
 
 if DATABASE_URL:
     try:
         init_db()
-        # DB???곗씠?곌? ?놁쓣 ?뚮쭔 珥덇린 濡쒕뵫
-        if db_get("nl_summary") is None:
-            print("珥덇린 ?곗씠???놁쓬 ??諛깃렇?쇱슫??濡쒕뵫 ?쒖옉")
+        # DB???怨쀬뵠?怨? ??곸뱽 ???춸 ?λ뜃由?嚥≪뮆逾?        if db_get("nl_summary") is None:
+            print("?λ뜃由??怨쀬뵠????곸벉 ??獄쏄퉫???깆뒲??嚥≪뮆逾???뽰삂")
             for fn in [run_refresh_nl, run_refresh_tic, run_refresh_dts, run_refresh_qra]:
                 threading.Thread(target=fn, daemon=True).start()
     except Exception as e:
-        print(f"DB 珥덇린???ㅻ쪟: {e}")
+        print(f"DB ?λ뜃由????살첒: {e}")
 else:
-    print("WARNING: DATABASE_URL ?섍꼍蹂?섍? ?ㅼ젙?섏? ?딆븯?듬땲??")
+    print("WARNING: DATABASE_URL ??띻펾癰궰??? ??쇱젟??? ??녿릭??щ빍??")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
@@ -892,7 +900,7 @@ HTML_TEMPLATE = """
     .error{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:14px;color:#f87171;margin-bottom:12px;font-size:13px;}
     .loading{text-align:center;padding:60px;color:rgba(255,255,255,0.25);font-size:14px;}
     .footer{font-size:10px;color:rgba(255,255,255,0.15);text-align:center;padding:12px;border-top:1px solid rgba(255,255,255,0.05);margin-top:4px;}
-    /* DTS ?뱀뀡 */
+    /* DTS ?諭??*/
     .dts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
     .dts-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px 16px;}
     .dts-hd{font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
@@ -902,7 +910,7 @@ HTML_TEMPLATE = """
     .dts-name{font-size:12px;color:rgba(255,255,255,0.4);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;}
     .dts-amt{font-size:12px;font-weight:500;white-space:nowrap;}
     .c-in{color:#34d399;}.c-out{color:#f87171;}
-    /* 罹섎┛??*/
+    /* 筌?꼶???*/
     .cal-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;}
     .cal-m{background:rgba(255,255,255,0.025);border-radius:8px;padding:9px 10px;border:1px solid rgba(255,255,255,0.05);}
     .cal-m.hl-red{border-color:rgba(248,113,113,0.3);}
@@ -916,7 +924,7 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
-    /* QRA 寃쎈ℓ ?댄똻 - JS ?쒖뼱 fixed ?앹뾽 */
+    /* QRA 野껋럥????꾨샍 - JS ??뽯선 fixed ??밸씜 */
     #auction-tooltip{display:none;position:fixed;z-index:9999;
       background:#1a1a22;border:1px solid rgba(255,255,255,0.15);border-radius:8px;
       padding:10px 13px;width:230px;pointer-events:none;
@@ -926,12 +934,12 @@ HTML_TEMPLATE = """
     #auction-tooltip .tip-neg{color:#f87171;font-weight:500;}
     #auction-tooltip .tip-neu{color:rgba(255,255,255,0.45);font-weight:500;}
     .has-tip{cursor:default;}
-    /* ?몃씪????(DTS/QRA) */
+    /* ?紐껋뵬????(DTS/QRA) */
     .itab-row{display:flex;gap:4px;margin-bottom:10px;}
     .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
     .itab.active{background:rgba(96,165,250,0.12);border-color:rgba(96,165,250,0.35);color:#60a5fa;}
     .itab-panel{display:none;}.itab-panel.active{display:block;}
-    /* QRA 諛?李⑦듃 */
+    /* QRA 獄?筌△뫂??*/
     .qra-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;}
     .qra-bar-label{width:110px;color:rgba(255,255,255,0.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
     .qra-bar-bg{flex:1;height:5px;background:rgba(255,255,255,0.05);border-radius:3px;}
@@ -944,7 +952,7 @@ HTML_TEMPLATE = """
     .qra-pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
     .qra-pill{font-size:10px;padding:2px 10px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);}
     .qra-pill.hl{border-color:rgba(96,165,250,0.4);color:#60a5fa;background:rgba(96,165,250,0.08);}
-    /* ?묎린/?쇱튂湲?*/
+    /* ?臾롫┛/??깊뒄疫?*/
     details.collapsible{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;}
     details.collapsible summary{padding:11px 16px;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;}
     details.collapsible summary::-webkit-details-marker{display:none;}
@@ -959,7 +967,7 @@ HTML_TEMPLATE = """
       {% if not summary and not error %}setTimeout(()=>location.reload(),10000);{% endif %}
     };
     function manualRefresh(){
-      document.getElementById('cd').textContent='媛깆떊 以?..';
+      document.getElementById('cd').textContent='揶쏄퉮??餓?..';
       fetch('/refresh').then(()=>setTimeout(()=>location.reload(),3000));
     }
     function switchTab(id){
@@ -987,7 +995,7 @@ HTML_TEMPLATE = """
       const el=getPlotlyDiv(cid); if(!el||!window.Plotly) return;
       Plotly.relayout(el,{'xaxis.autorange':true,'yaxis.autorange':true});
     }
-    // 寃쎈ℓ ?댄똻 (留덉슦???꾩튂 湲곕컲 fixed)
+    // 野껋럥????꾨샍 (筌띾뜆????袁⑺뒄 疫꿸퀡而?fixed)
     document.addEventListener('DOMContentLoaded', function(){
       const tip = document.createElement('div');
       tip.id = 'auction-tooltip';
@@ -1033,35 +1041,35 @@ HTML_TEMPLATE = """
 <div class="container">
 <div class="tabs">
   <div class="tab active" id="tab-btn-nl" onclick="switchTab('nl')">Net Liquidity</div>
-  <div class="tab" id="tab-btn-tic" onclick="switchTab('tic')">援??蹂?誘멸뎅梨?蹂댁쑀</div>
+  <div class="tab" id="tab-btn-tic" onclick="switchTab('tic')">???癰?沃섎㈇?낉㎖?癰귣똻?</div>
 </div>
 
 <div id="tab-nl" class="tab-content active">
 {% if error %}
   <div class="error">Error: {{ error }}</div>
 {% elif not summary %}
-  <div class="loading">FRED ?곗씠??濡쒕뵫 以?.. ?좎떆 ???먮룞 ?덈줈怨좎묠?⑸땲??</div>
+  <div class="loading">FRED ?怨쀬뵠??嚥≪뮆逾?餓?.. ?醫롫뻻 ???癒?짗 ??덉쨮?⑥쥙臾??몃빍??</div>
 {% else %}
 
   <div class="metrics">
     <div class="mc"><div class="mc-lbl">Net Liquidity</div><div class="mc-val">{{ summary.nl }}</div><div class="mc-sub {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_chg }}</div></div>
     <div class="mc"><div class="mc-lbl">NL Regression FV</div><div class="mc-val">{{ summary.fv_nl }}</div><div class="mc-sub {{ 'pos' if summary.fv_nl_cheap else ('neg' if summary.fv_nl_cheap is not none else 'neu') }}">{{ summary.fv_nl_gap }}</div></div>
-    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">二쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} 쨌 H.4.1 留ㅼ＜ ?섏슂??/div></div>
-    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">二쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} 쨌 ?ㅼ쓬 諛쒗몴 ~{{ next_h41 }}</div></div>
-    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">?쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
+    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">雅뚯눊而?/span> <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} 夷?H.4.1 筌띲끉竊???륁뒄??/div></div>
+    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">雅뚯눊而?/span> <a class="src-link" href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} 夷???쇱벉 獄쏆뮉紐?~{{ next_h41 }}</div></div>
+    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">??⑥퍢</span> <a class="src-link" href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
 
   <div class="chart-card">
     <div class="chart-header">
-      <div><div class="chart-title">WALCL 援ъ꽦: Net Liquidity 쨌 TGA 쨌 RRP ??Daily (2000?뱎resent)
+      <div><div class="chart-title">WALCL ?닌딄쉐: Net Liquidity 夷?TGA 夷?RRP ??Daily (2000?諭럕esent)
         <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED ??/a>
       </div>
       <div class="legend">
         <span><span style="width:12px;height:8px;background:rgba(96,165,250,0.6);border-radius:2px;display:inline-block;"></span>Net Liquidity</span>
         <span><span style="width:12px;height:8px;background:rgba(52,211,153,0.55);border-radius:2px;display:inline-block;"></span>TGA</span>
         <span><span style="width:12px;height:8px;background:rgba(251,191,36,0.55);border-radius:2px;display:inline-block;"></span>RRP</span>
-        <span style="font-size:10px;color:rgba(255,255,255,0.2);">?뚯쁺: 寃쎄린移⑥껜</span>
+        <span style="font-size:10px;color:rgba(255,255,255,0.2);">???겫: 野껋럡由곁㎉?κ퍥</span>
       </div></div>
       <div class="zoom-btns"><button onclick="zoomChart('c1','in')">+</button><button onclick="zoomChart('c1','out')">??/button><button onclick="resetChart('c1')">??/button></div>
     </div>
@@ -1070,39 +1078,39 @@ HTML_TEMPLATE = """
 
   <div class="chart-card">
     <div class="chart-header">
-      <div><div class="chart-title">S&P 500 vs NL Regression FV ??Daily (2000?뱎resent)
+      <div><div class="chart-title">S&P 500 vs NL Regression FV ??Daily (2000?諭럕esent)
         <a class="src-link" href="https://fred.stlouisfed.org/series/SP500" target="_blank">FRED ??/a>
       </div>
       <div class="legend">
         <span><span style="width:16px;height:2px;background:#e2e2e2;display:inline-block;"></span>S&P 500</span>
-        <span><span style="width:16px;height:2px;border-top:2px dashed #60a5fa;display:inline-block;"></span>NL ?뚭? FV</span>
+        <span><span style="width:16px;height:2px;border-top:2px dashed #60a5fa;display:inline-block;"></span>NL ??? FV</span>
       </div></div>
       <div class="zoom-btns"><button onclick="zoomChart('c2','in')">+</button><button onclick="zoomChart('c2','out')">??/button><button onclick="resetChart('c2')">??/button></div>
     </div>
     <div id="c2" style="padding:4px;">{{ chart2_html | safe }}</div>
   </div>
 
-  <div class="section-title">TGA ?ъ슜泥?쨌 DTS 쨌 QRA
-    <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 湲곗?</span>
+  <div class="section-title">TGA ???쒙㎗?夷?DTS 夷?QRA
+    <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 疫꿸퀣?</span>
     <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata ??/a>
   </div>
 
   <div id="dts-qra-tabs">
     <div class="itab-row">
-      <button class="itab active" id="dts-qra-tabs-tab-dts" onclick="switchItab('dts-qra-tabs','dts')">DTS ?쇱씪 ?댁뿭</button>
-      <button class="itab" id="dts-qra-tabs-tab-qra" onclick="switchItab('dts-qra-tabs','qra')">QRA 援?콈諛쒗뻾</button>
+      <button class="itab active" id="dts-qra-tabs-tab-dts" onclick="switchItab('dts-qra-tabs','dts')">DTS ??깆뵬 ??곷열</button>
+      <button class="itab" id="dts-qra-tabs-tab-qra" onclick="switchItab('dts-qra-tabs','qra')">QRA ??肄덅쳸?쀫뻬</button>
     </div>
 
-    <!-- DTS ?⑤꼸 -->
+    <!-- DTS ??ㅺ섯 -->
     <div class="itab-panel active" id="dts-qra-tabs-panel-dts">
       {% if dts_error %}
-      <div class="error" style="font-size:12px;">DTS ?곗씠???ㅻ쪟: {{ dts_error }}</div>
+      <div class="error" style="font-size:12px;">DTS ?怨쀬뵠????살첒: {{ dts_error }}</div>
       {% elif not dts_deposits %}
-      <div class="loading" style="padding:20px;">DTS ?곗씠??濡쒕뵫 以?..</div>
+      <div class="loading" style="padding:20px;">DTS ?怨쀬뵠??嚥≪뮆逾?餓?..</div>
       {% else %}
       <div class="dts-grid">
         <div class="dts-card">
-          <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>二쇱슂 ?낃툑 ??ぉ (Table II)
+          <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>雅뚯눘????껎닊 ????(Table II)
             <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">??/a>
           </div>
           {% for item in dts_deposits %}
@@ -1113,7 +1121,7 @@ HTML_TEMPLATE = """
           {% endfor %}
         </div>
         <div class="dts-card">
-          <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>二쇱슂 異쒓툑 ??ぉ (Table II)
+          <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>雅뚯눘???곗뮄??????(Table II)
             <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">??/a>
           </div>
           {% for item in dts_withdrawals %}
@@ -1125,7 +1133,7 @@ HTML_TEMPLATE = """
         </div>
       </div>
       <div class="dts-card" style="margin-bottom:12px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA ?뱀씪 ?쒕????붿빟
+        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA ?諭????????遺용튋
           <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">??/a>
         </div>
         {% for item in dts_balance %}
@@ -1138,26 +1146,26 @@ HTML_TEMPLATE = """
       {% endif %}
     </div>
 
-    <!-- QRA ?⑤꼸 -->
+    <!-- QRA ??ㅺ섯 -->
     <div class="itab-panel" id="dts-qra-tabs-panel-qra">
       {% if qra_error %}
-      <div class="error" style="font-size:12px;">QRA ?곗씠???ㅻ쪟: {{ qra_error }}</div>
+      <div class="error" style="font-size:12px;">QRA ?怨쀬뵠????살첒: {{ qra_error }}</div>
       {% elif not qra_data %}
-      <div class="loading" style="padding:20px;">QRA ?곗씠??濡쒕뵫 以?..</div>
+      <div class="loading" style="padding:20px;">QRA ?怨쀬뵠??嚥≪뮆逾?餓?..</div>
       {% else %}
-      <!-- 硫뷀듃由?移대뱶 -->
+      <!-- 筌롫??껆뵳?燁삳?諭?-->
       <div class="metrics" style="margin-bottom:10px;">
-        <div class="mc"><div class="mc-lbl">?ㅼ쓬 QRA 諛쒗몴</div><div class="mc-val" style="font-size:16px;">{{ qra_data.next_qra }}</div><div class="mc-sub neu">遺꾧린 李⑥엯 ?섏슂 諛쒗몴</div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 T-Bill 諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.tbill_30d }}</div><div class="mc-sub neg">?좊룞???≪닔??/div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 荑좏룿梨?諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.coupon_30d }}</div><div class="mc-sub neg">NL ?뺣컯??/div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 TIPS 諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.tips_30d }}</div><div class="mc-sub neu">臾쇨??곕룞</div></div>
-        <div class="mc"><div class="mc-lbl">?됯퇏 ?묒같瑜?(BTC)</div><div class="mc-val">{{ qra_data.avg_btc }}</div><div class="mc-sub neu">理쒓렐 30???됯퇏</div></div>
-        <div class="mc"><div class="mc-lbl">珥?諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.total_30d }}</div><div class="mc-sub neg">?쒖옣 ?≪닔 洹쒕え??/div></div>
+        <div class="mc"><div class="mc-lbl">??쇱벉 QRA 獄쏆뮉紐?/div><div class="mc-val" style="font-size:16px;">{{ qra_data.next_qra }}</div><div class="mc-sub neu">?브쑨由?筌△뫁????륁뒄 獄쏆뮉紐?/div></div>
+        <div class="mc"><div class="mc-lbl">筌ㅼ뮄??T-Bill 獄쏆뮉六?(30??</div><div class="mc-val">{{ qra_data.tbill_30d }}</div><div class="mc-sub neg">?醫딅짗????る땾??/div></div>
+        <div class="mc"><div class="mc-lbl">筌ㅼ뮄???묒쥚猷울㎖?獄쏆뮉六?(30??</div><div class="mc-val">{{ qra_data.coupon_30d }}</div><div class="mc-sub neg">NL ?類ｌ뺏??/div></div>
+        <div class="mc"><div class="mc-lbl">筌ㅼ뮄??TIPS 獄쏆뮉六?(30??</div><div class="mc-val">{{ qra_data.tips_30d }}</div><div class="mc-sub neu">?얠눊??怨뺣짗</div></div>
+        <div class="mc"><div class="mc-lbl">???뇧 ?臾믨컳??(BTC)</div><div class="mc-val">{{ qra_data.avg_btc }}</div><div class="mc-sub neu">筌ㅼ뮄??30?????뇧</div></div>
+        <div class="mc"><div class="mc-lbl">??獄쏆뮉六?(30??</div><div class="mc-val">{{ qra_data.total_30d }}</div><div class="mc-sub neg">??뽰삢 ??る땾 域뱀뮆???/div></div>
       </div>
 
-      <!-- 諛쒗뻾 援ъ꽦 諛?-->
+      <!-- 獄쏆뮉六??닌딄쉐 獄?-->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>援?콈 諛쒗뻾 援ъ꽦 (理쒓렐 30??쨌 ?좊룞???≪닔)
+        <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>??肄?獄쏆뮉六??닌딄쉐 (筌ㅼ뮄??30??夷??醫딅짗????る땾)
           <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned" target="_blank">TreasuryDirect ??/a>
         </div>
         {% for item in qra_data.breakdown %}
@@ -1168,47 +1176,47 @@ HTML_TEMPLATE = """
         </div>
         {% endfor %}
         <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
-          * 援?콈 諛쒗뻾 ??TGA ?좎엯 ??NL 媛먯냼. T-Bill ?꾩＜ 諛쒗뻾 ??MMF(RRP)???곸뇙 ?④낵 ?덉쓬.
+          * ??肄?獄쏆뮉六???TGA ?醫롮뿯 ??NL 揶쏅Ŋ?? T-Bill ?袁⑼폒 獄쏆뮉六???MMF(RRP)???怨몃뇵 ??ｋ궢 ??됱벉.
         </div>
       </div>
 
-      <!-- QRA ?먮룆 湲곗? -->
+      <!-- QRA ?癒?즴 疫꿸퀣? -->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>QRA ?좊룞???먮룆 湲곗?</div>
-        <div class="dts-row"><span class="dts-name">T-Bill 鍮꾩쨷 ?믪쓬</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">RRP???곸뇙</span><span class="qra-tag tag-in">NL 以묐┰~?좎엯</span></div>
-        <div class="dts-row"><span class="dts-name">荑좏룿梨?鍮꾩쨷 ?믪쓬</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">???以鍮꾧툑 ?≪닔</span><span class="qra-tag tag-out">NL ?뺣컯</span></div>
-        <div class="dts-row"><span class="dts-name">李⑥엯 洹쒕え ?덉긽??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 湲됱쬆 ?덇퀬</span><span class="qra-tag tag-out">NL ?섎씫 ?좏샇</span></div>
-        <div class="dts-row"><span class="dts-name">李⑥엯 洹쒕え ?덉긽??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?꾨쭔 ?좎?</span><span class="qra-tag tag-in">NL ?덉젙 ?좏샇</span></div>
-        <div class="dts-row"><span class="dts-name">遺梨꾪븳???묒긽 以?/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?뚯쭊 吏??/span><span class="qra-tag tag-in">NL ?몄쐞???곸듅</span></div>
-        <div class="dts-row"><span class="dts-name">遺梨꾪븳???댁냼 ??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?ъ땐??/span><span class="qra-tag tag-out">NL 湲됰씫 ?꾪뿕</span></div>
+        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>QRA ?醫딅짗???癒?즴 疫꿸퀣?</div>
+        <div class="dts-row"><span class="dts-name">T-Bill ??쑴夷??誘れ벉</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">RRP???怨몃뇵</span><span class="qra-tag tag-in">NL 餓λ쵎???醫롮뿯</span></div>
+        <div class="dts-row"><span class="dts-name">?묒쥚猷울㎖???쑴夷??誘れ벉</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">????餓Β??쑨????る땾</span><span class="qra-tag tag-out">NL ?類ｌ뺏</span></div>
+        <div class="dts-row"><span class="dts-name">筌△뫁??域뱀뮆????됯맒??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 疫뀀맩弛???뉙?/span><span class="qra-tag tag-out">NL ??롮뵭 ?醫륁깈</span></div>
+        <div class="dts-row"><span class="dts-name">筌△뫁??域뱀뮆????됯맒??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?袁⑥춸 ?醫?</span><span class="qra-tag tag-in">NL ??됱젟 ?醫륁깈</span></div>
+        <div class="dts-row"><span class="dts-name">?봔筌?쑵釉???臾믨맒 餓?/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ???춭 筌왖??/span><span class="qra-tag tag-in">NL ?紐꾩맄???怨몃뱟</span></div>
+        <div class="dts-row"><span class="dts-name">?봔筌?쑵釉????곷꺖 ??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?????/span><span class="qra-tag tag-out">NL 疫뀀맧???袁る퓮</span></div>
       </div>
 
-      <!-- 諛쒗몴 ?쇱젙 -->
+      <!-- 獄쏆뮉紐???깆젟 -->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#fbbf24;"></span>QRA 諛쒗몴 ?쇱젙 (2026)</div>
+        <div class="dts-hd"><span class="dts-dot" style="background:#fbbf24;"></span>QRA 獄쏆뮉紐???깆젟 (2026)</div>
         <div class="qra-pill-row">
           {% for q in qra_data.schedule %}
           <span class="qra-pill {{ 'hl' if q.current else '' }}">{{ q.label }}</span>
           {% endfor %}
         </div>
         <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;">
-          TBAC 諛쒗몴 ?뱀씪 ?쒖옣 蹂?숈꽦 二쇱쓽. 李⑥엯 洹쒕え????湲덈━??쨌 NL???뺣젰.
+          TBAC 獄쏆뮉紐??諭????뽰삢 癰궰??덇쉐 雅뚯눘?? 筌△뫁??域뱀뮆?????疫뀀뜄???夷?NL???類ｌ젾.
         </div>
       </div>
 
-      <!-- 理쒓렐 寃쎈ℓ ?댁뿭 -->
-      <div class="section-title" style="margin-top:4px;">理쒓렐 寃쎈ℓ ?댁뿭 (30??
-        <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned?format=json&dateFieldName=auctionDate&startDate={{ qra_data.start_date }}" target="_blank">?먮낯 ??/a>
+      <!-- 筌ㅼ뮄??野껋럥????곷열 -->
+      <div class="section-title" style="margin-top:4px;">筌ㅼ뮄??野껋럥????곷열 (30??
+        <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned?format=json&dateFieldName=auctionDate&startDate={{ qra_data.start_date }}" target="_blank">?癒?궚 ??/a>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th style="text-align:left;">寃쎈ℓ??/th>
-            <th style="text-align:left;">醫낅쪟</th>
-            <th style="text-align:left;">留뚭린</th>
-            <th>諛쒗뻾??B)</th>
-            <th>?묒같瑜?/th>
-            <th>湲덈━/?좎씤??/th>
+            <th style="text-align:left;">野껋럥???/th>
+            <th style="text-align:left;">?ル굝履?/th>
+            <th style="text-align:left;">筌띾슡由?/th>
+            <th>獄쏆뮉六??B)</th>
+            <th>?臾믨컳??/th>
+            <th>疫뀀뜄???醫롮뵥??/th>
           </tr></thead>
           <tbody>
             {% for r in qra_data.auctions %}
@@ -1216,7 +1224,7 @@ HTML_TEMPLATE = """
               <td style="text-align:left;">{{ r.date }}</td>
               <td style="text-align:left;">
                 <span class="has-tip" style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};"
-                  data-tip-title="{{ r.tip_title }} 쨌 {{ r.term }}"
+                  data-tip-title="{{ r.tip_title }} 夷?{{ r.term }}"
                   data-tip-body="{{ r.tip_body }}"
                   data-tip-liq="{{ r.tip_liq }}"
                   data-tip-neg="{{ 'true' if r.tip_neg else 'false' }}">{{ r.stype }}</span>
@@ -1225,16 +1233,16 @@ HTML_TEMPLATE = """
               <td>{{ r.amt }}</td>
               <td>
                 <span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }} has-tip"
-                  data-tip-title="?묒같瑜?(Bid-to-Cover)"
-                  data-tip-body="寃쎌웳 ?낆같 ?쒖텧??첨 ?숈같?? ?섏슂 媛뺣룄 吏??"
-                  data-tip-liq="{{ '2.3x???섏슂 ?묓샇' if r.btc_ok else '2.3x???섏슂 遺議?寃쎄퀬' }}"
+                  data-tip-title="?臾믨컳??(Bid-to-Cover)"
+                  data-tip-body="野껋럩????녾컳 ??뽱뀱??泥???덇컳?? ??륁뒄 揶쏅베猷?筌왖??"
+                  data-tip-liq="{{ '2.3x????륁뒄 ?臾볦깈' if r.btc_ok else '2.3x????륁뒄 ?봔鈺?野껋럡?? }}"
                   data-tip-neg="{{ 'false' if r.btc_ok else 'true' }}">{{ r.btc }}</span>
               </td>
               <td>
                 <span class="has-tip" style="color:rgba(255,255,255,0.5);"
-                  data-tip-title="?숈같 湲덈━/?좎씤??
-                  data-tip-body="{{ 'T-Bill: ?좎씤??Discount Rate) 湲곗?. ?믪쓣?섎줉 ?④린 ?먭툑 鍮꾩슜??' if r.is_bill else '荑좏룿梨? 理쒓퀬 ?숈같 ?섏씡瑜?High Yield). ?믪쓣?섎줉 ?ъ젙 ?댁옄 遺?닳넁 쨌 NL ?κ린 ?뺣컯.' }}"
-                  data-tip-liq="{{ '?④린湲덈━ 諛⑺뼢??吏?? if r.is_bill else '?κ린湲덈━????二쇱떇 硫?고뵆 ?뺣컯' }}"
+                  data-tip-title="??덇컳 疫뀀뜄???醫롮뵥??
+                  data-tip-body="{{ 'T-Bill: ?醫롮뵥??Discount Rate) 疫꿸퀣?. ?誘れ뱽??롮쨯 ??ｋ┛ ?癒?닊 ??쑴???' if r.is_bill else '?묒쥚猷울㎖? 筌ㅼ뮄????덇컳 ??륁뵡??High Yield). ?誘れ뱽??롮쨯 ??????곸쁽 ?봔??노꼤 夷?NL ?觀由??類ｌ뺏.' }}"
+                  data-tip-liq="{{ '??ｋ┛疫뀀뜄??獄쎻뫚堉??筌왖?? if r.is_bill else '?觀由경묾?댿봺????雅뚯눘??筌렺?怨좊탣 ?類ｌ뺏' }}"
                   data-tip-neg="{{ 'false' if r.is_bill else 'true' }}">{{ r.rate }}</span>
               </td>
             </tr>
@@ -1246,120 +1254,120 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <div class="section-title">?ъ젙 ?대깽??罹섎┛??    <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ??/a>
+  <div class="section-title">??????源??筌?꼶???    <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ??/a>
   </div>
   <div class="chart-card" style="padding:14px 16px;margin-bottom:12px;">
     <div class="cal-legend">
-      <span><span class="cal-legend-dot" style="background:#34d399;"></span>?좊룞???좎엯 (?섍툒쨌?뺣?吏異?</span>
-      <span><span class="cal-legend-dot" style="background:#f87171;"></span>?좊룞???좎텧 (?멸툑?⑸?쨌援?콈諛쒗뻾)</span>
-      <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>以묐┰/諛쒗몴</span>
+      <span><span class="cal-legend-dot" style="background:#34d399;"></span>?醫딅짗???醫롮뿯 (??랁닋夷?類?筌왖??</span>
+      <span><span class="cal-legend-dot" style="background:#f87171;"></span>?醫딅짗???醫롰뀱 (?硫명닊???夷뚧뤃?肄덅쳸?쀫뻬)</span>
+      <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>餓λ쵎??獄쏆뮉紐?/span>
     </div>
     <div class="cal-grid">
       <div class="cal-m"><div class="cal-mn">1??/div>
-        <span class="cal-ev ev-out">4Q 異붿젙???⑸? (1/15)</span>
-        <span class="cal-ev ev-neu">IRS ?좉퀬?쒖쫵 媛쒖떆</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌硫붾뵒耳?닳넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~1/29)</span>
+        <span class="cal-ev ev-out">4Q ?곕뗄?????? (1/15)</span>
+        <span class="cal-ev ev-neu">IRS ?醫됲??뽰サ 揶쏆뮇??/span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢夷뚳쭖遺얜탵?냈??노꼤</span>
+        <span class="cal-ev ev-neu">QRA 獄쏆뮉紐?~1/29)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">2??/div>
-        <span class="cal-ev ev-in">?섍툒 ?쇳겕 (W-2)?묅넁</span>
-        <span class="cal-ev ev-in">EITC쨌CTC ?섍툒 媛쒖떆</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌硫붾뵒耳?닳넁</span>
-        <span class="cal-ev ev-neu">H.4.1 留ㅼ＜ ?섏슂??/span>
+        <span class="cal-ev ev-in">??랁닋 ??녠쾿 (W-2)?臾낅꼤</span>
+        <span class="cal-ev ev-in">EITC夷똂TC ??랁닋 揶쏆뮇??/span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢夷뚳쭖遺얜탵?냈??노꼤</span>
+        <span class="cal-ev ev-neu">H.4.1 筌띲끉竊???륁뒄??/span>
       </div>
       <div class="cal-m"><div class="cal-mn">3??/div>
-        <span class="cal-ev ev-in">?섍툒 吏?띯넁</span>
-        <span class="cal-ev ev-neu">S-Corp쨌?뚰듃?덉떗 ?좉퀬(3/15)</span>
-        <span class="cal-ev ev-neu">T-Note 遺꾧린諛쒗뻾</span>
-        <span class="cal-ev ev-out">援?콈 留뚭린쨌濡ㅼ삤踰꾟넃</span>
+        <span class="cal-ev ev-in">??랁닋 筌왖???꼤</span>
+        <span class="cal-ev ev-neu">S-Corp夷??곕뱜??됰뼏 ?醫됲?3/15)</span>
+        <span class="cal-ev ev-neu">T-Note ?브쑨由계쳸?쀫뻬</span>
+        <span class="cal-ev ev-out">??肄?筌띾슡由곗쮯嚥▲끉?ㅸ린袁잙꼦</span>
       </div>
       <div class="cal-m hl-red"><div class="cal-mn red">4????/div>
-        <span class="cal-ev ev-out">Tax Day (4/15)?볛넃</span>
-        <span class="cal-ev ev-out">1Q 異붿젙??(4/15)??/span>
-        <span class="cal-ev ev-out">TGA 湲됱쬆 ??NL 媛먯냼</span>
-        <span class="cal-ev ev-neu">?곗옣?좎껌(Form 4868)</span>
+        <span class="cal-ev ev-out">Tax Day (4/15)?蹂쏅꼦</span>
+        <span class="cal-ev ev-out">1Q ?곕뗄???(4/15)??/span>
+        <span class="cal-ev ev-out">TGA 疫뀀맩弛???NL 揶쏅Ŋ??/span>
+        <span class="cal-ev ev-neu">?怨쀬삢?醫롪퍕(Form 4868)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">5??/div>
-        <span class="cal-ev ev-in">?붿뿬 ?섍툒 吏?띯넁</span>
-        <span class="cal-ev ev-neu">Form 990 鍮꾩쁺由??좉퀬</span>
-        <span class="cal-ev ev-in">?뺣? 吏異??뺤긽?붴넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~4?붾쭚)</span>
+        <span class="cal-ev ev-in">?遺용연 ??랁닋 筌왖???꼤</span>
+        <span class="cal-ev ev-neu">Form 990 ??쑴?븀뵳??醫됲?/span>
+        <span class="cal-ev ev-in">?類? 筌왖???類ㅺ맒?遺대꼤</span>
+        <span class="cal-ev ev-neu">QRA 獄쏆뮉紐?~4?遺얠춾)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">6??/div>
-        <span class="cal-ev ev-out">2Q 異붿젙??(6/15)??/span>
-        <span class="cal-ev ev-in">援?갑쨌?명봽??吏異쒋넁</span>
-        <span class="cal-ev ev-neu">T-Bill ?뺢린 濡ㅼ삤踰?/span>
-        <span class="cal-ev ev-neu">FOMC ?뚯쓽(?듭긽)</span>
+        <span class="cal-ev ev-out">2Q ?곕뗄???(6/15)??/span>
+        <span class="cal-ev ev-in">??媛묒쮯?紐낅늄??筌왖?곗뭼??/span>
+        <span class="cal-ev ev-neu">T-Bill ?類?┛ 嚥▲끉?ㅸ린?/span>
+        <span class="cal-ev ev-neu">FOMC ???벥(???맒)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">7??/div>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 吏湲됤넁</span>
-        <span class="cal-ev ev-in">硫붾뵒耳?는룸찓?붿??대뱶??/span>
-        <span class="cal-ev ev-in">?щ쫫 ?명봽??吏異쒋넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~7/28)</span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢 筌왖疫뀀맍??/span>
+        <span class="cal-ev ev-in">筌롫뗀逾믦냈??붾８李?遺???諭??/span>
+        <span class="cal-ev ev-in">??已??紐낅늄??筌왖?곗뭼??/span>
+        <span class="cal-ev ev-neu">QRA 獄쏆뮉紐?~7/28)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">8??/div>
-        <span class="cal-ev ev-out">T-Bill ?洹쒕え 諛쒗뻾??/span>
-        <span class="cal-ev ev-neu">QRA쨌TBAC 諛쒗몴</span>
-        <span class="cal-ev ev-in">?뺣? ?щ웾吏異쒋넁</span>
-        <span class="cal-ev ev-neu">??뒯? ?곗꽕(?곗?)</span>
+        <span class="cal-ev ev-out">T-Bill ??域뱀뮆??獄쏆뮉六??/span>
+        <span class="cal-ev ev-neu">QRA夷똖BAC 獄쏆뮉紐?/span>
+        <span class="cal-ev ev-in">?類? ???억쭪??곗뭼??/span>
+        <span class="cal-ev ev-neu">????? ?怨쀪퐬(?怨?)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">9??/div>
-        <span class="cal-ev ev-out">3Q 異붿젙??(9/15)??/span>
-        <span class="cal-ev ev-in">?뚭퀎?곕룄 留덇컧 吏異쒋넁??/span>
-        <span class="cal-ev ev-out">援?콈 遺꾧린 諛쒗뻾??/span>
-        <span class="cal-ev ev-neu">?뚭퀎?곕룄 醫낅즺(9/30)</span>
+        <span class="cal-ev ev-out">3Q ?곕뗄???(9/15)??/span>
+        <span class="cal-ev ev-in">????怨뺣즲 筌띾뜃而?筌왖?곗뭼???/span>
+        <span class="cal-ev ev-out">??肄??브쑨由?獄쏆뮉六??/span>
+        <span class="cal-ev ev-neu">????怨뺣즲 ?ル굝利?9/30)</span>
       </div>
       <div class="cal-m"><div class="cal-mn">10??/div>
-        <span class="cal-ev ev-neu">???뚭퀎?곕룄 媛쒖떆(FY)</span>
-        <span class="cal-ev ev-neu">?곗옣 留덇컧(10/15)</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 COLA ?몄긽??/span>
-        <span class="cal-ev ev-neu">TIC ?곗씠??諛쒗몴(~18??</span>
+        <span class="cal-ev ev-neu">??????怨뺣즲 揶쏆뮇??FY)</span>
+        <span class="cal-ev ev-neu">?怨쀬삢 筌띾뜃而?10/15)</span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢 COLA ?紐꾧맒??/span>
+        <span class="cal-ev ev-neu">TIC ?怨쀬뵠??獄쏆뮉紐?~18??</span>
       </div>
       <div class="cal-m"><div class="cal-mn">11??/div>
-        <span class="cal-ev ev-in">?곕쭚 ?뺣? 吏異쒋넁</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌蹂듭?吏異쒋넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~10?붾쭚)</span>
-        <span class="cal-ev ev-neu">T-Bond 遺꾧린諛쒗뻾</span>
+        <span class="cal-ev ev-in">?怨뺤춾 ?類? 筌왖?곗뭼??/span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢夷뚩퉪??筌왖?곗뭼??/span>
+        <span class="cal-ev ev-neu">QRA 獄쏆뮉紐?~10?遺얠춾)</span>
+        <span class="cal-ev ev-neu">T-Bond ?브쑨由계쳸?쀫뻬</span>
       </div>
       <div class="cal-m hl-green"><div class="cal-mn green">12????/div>
-        <span class="cal-ev ev-in">吏異??쇳겕?묅넁 (?뚭퀎留덇컧)</span>
-        <span class="cal-ev ev-out">?곕쭚 ?멸툑 ?⑸???/span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 ?좎?湲됤넁</span>
-        <span class="cal-ev ev-neu">?곗? 理쒖쥌 FOMC</span>
+        <span class="cal-ev ev-in">筌왖????녠쾿?臾낅꼤 (???롳쭕?뉗빵)</span>
+        <span class="cal-ev ev-out">?怨뺤춾 ?硫명닊 ?????/span>
+        <span class="cal-ev ev-in">???띈퉪?곸삢 ?醫?疫뀀맍??/span>
+        <span class="cal-ev ev-neu">?怨? 筌ㅼ뮇伊?FOMC</span>
       </div>
     </div>
   </div>
 
   <details class="collapsible">
-    <summary>?쒖옣 ?좊룞??湲곗? <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank" onclick="event.stopPropagation()">H.4.1 ??/a></summary>
+    <summary>??뽰삢 ?醫딅짗??疫꿸퀣? <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank" onclick="event.stopPropagation()">H.4.1 ??/a></summary>
     <div class="collapsible-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;line-height:1.8;">
         <div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?뱿 ?좊룞???좎엯 ?좏샇 (NL ?곸듅 議곌굔)</div>
-          <div class="dts-row"><span class="dts-name">WALCL 利앷?</span><span style="color:#34d399;font-size:11px;">Fed ?먯궛 留ㅼ엯 ???쒖쨷 ?먭툑??/span></div>
-          <div class="dts-row"><span class="dts-name">TGA 媛먯냼</span><span style="color:#34d399;font-size:11px;">?щТ遺 吏異??????以鍮꾧툑??/span></div>
-          <div class="dts-row"><span class="dts-name">RRP 媛먯냼</span><span style="color:#34d399;font-size:11px;">MMF ?먭툑 ?쒖옣 ?좎엯??/span></div>
-          <div class="dts-row"><span class="dts-name">遺梨꾪븳???묒긽</span><span style="color:#34d399;font-size:11px;">TGA ?뚯쭊 ??NL 湲됱긽??/span></div>
-          <div class="dts-row"><span class="dts-name">QE ?ш컻</span><span style="color:#34d399;font-size:11px;">WALCL ?뺣? ??吏곸젒 ?좊룞?기넁</span></div>
-          <div class="dts-row"><span class="dts-name">?섍툒 ?쒖쫵 (2~3??</span><span style="color:#34d399;font-size:11px;">TGA 媛먯냼쨌?뚮퉬??/span></div>
-          <div class="dts-row"><span class="dts-name">SRF쨌?뺤콉 ?異?/span><span style="color:#34d399;font-size:11px;">Fed 湲닿툒 ?좊룞??怨듦툒??/span></div>
-          <div class="dts-row"><span class="dts-name">?명솚蹂댁쑀 ?щ윭 ?섎쪟</span><span style="color:#34d399;font-size:11px;">?댁쇅 以묒븰????ㅼ솑?쇱씤??/span></div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?諭??醫딅짗???醫롮뿯 ?醫륁깈 (NL ?怨몃뱟 鈺곌퀗援?</div>
+          <div class="dts-row"><span class="dts-name">WALCL 筌앹빓?</span><span style="color:#34d399;font-size:11px;">Fed ?癒?텦 筌띲끉??????뽰㉦ ?癒?닊??/span></div>
+          <div class="dts-row"><span class="dts-name">TGA 揶쏅Ŋ??/span><span style="color:#34d399;font-size:11px;">??龜?봔 筌왖????????餓Β??쑨???/span></div>
+          <div class="dts-row"><span class="dts-name">RRP 揶쏅Ŋ??/span><span style="color:#34d399;font-size:11px;">MMF ?癒?닊 ??뽰삢 ?醫롮뿯??/span></div>
+          <div class="dts-row"><span class="dts-name">?봔筌?쑵釉???臾믨맒</span><span style="color:#34d399;font-size:11px;">TGA ???춭 ??NL 疫뀀맩湲??/span></div>
+          <div class="dts-row"><span class="dts-name">QE ??而?/span><span style="color:#34d399;font-size:11px;">WALCL ?類? ??筌욊낯???醫딅짗?湲곕꼤</span></div>
+          <div class="dts-row"><span class="dts-name">??랁닋 ??뽰サ (2~3??</span><span style="color:#34d399;font-size:11px;">TGA 揶쏅Ŋ?쇱쮯???돩??/span></div>
+          <div class="dts-row"><span class="dts-name">SRF夷?類ㅼ퐠 ????/span><span style="color:#34d399;font-size:11px;">Fed 疫뀀떯???醫딅짗???⑤벀???/span></div>
+          <div class="dts-row"><span class="dts-name">?紐낆넎癰귣똻? ??????롮첒</span><span style="color:#34d399;font-size:11px;">??곸뇚 餓λ쵐釉??????쇱넁??깆뵥??/span></div>
         </div>
         <div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?뱾 ?좊룞???좎텧 ?좏샇 (NL ?섎씫 議곌굔)</div>
-          <div class="dts-row"><span class="dts-name">WALCL 媛먯냼 (QT)</span><span style="color:#f87171;font-size:11px;">Fed ?먯궛 異뺤냼 ??以鍮꾧툑 媛먯냼??/span></div>
-          <div class="dts-row"><span class="dts-name">TGA 湲됱쬆</span><span style="color:#f87171;font-size:11px;">?멸툑?⑸?쨌援?콈諛쒗뻾 ???쒖쨷 ?≪닔??/span></div>
-          <div class="dts-row"><span class="dts-name">RRP 利앷?</span><span style="color:#f87171;font-size:11px;">MMF媛 Fed???먭툑 ?덉튂??/span></div>
-          <div class="dts-row"><span class="dts-name">Tax Day (4??</span><span style="color:#f87171;font-size:11px;">TGA 湲됱쬆 ??NL ?④린 ?뺣컯??/span></div>
-          <div class="dts-row"><span class="dts-name">異붿젙???⑸?(遺꾧린)</span><span style="color:#f87171;font-size:11px;">1/15 쨌 4/15 쨌 6/15 쨌 9/15??/span></div>
-          <div class="dts-row"><span class="dts-name">T-Bill ?洹쒕え 諛쒗뻾</span><span style="color:#f87171;font-size:11px;">?쒖쨷 ?먭툑 援?콈濡??≪닔??/span></div>
-          <div class="dts-row"><span class="dts-name">遺梨꾪븳???댁냼 ??/span><span style="color:#f87171;font-size:11px;">TGA ?ъ땐????NL 湲됰씫??/span></div>
-          <div class="dts-row"><span class="dts-name">湲곗?湲덈━ ?몄긽</span><span style="color:#f87171;font-size:11px;">RRP 湲덈━ 留ㅻ젰?????먭툑?좎텧??/span></div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?諭??醫딅짗???醫롰뀱 ?醫륁깈 (NL ??롮뵭 鈺곌퀗援?</div>
+          <div class="dts-row"><span class="dts-name">WALCL 揶쏅Ŋ??(QT)</span><span style="color:#f87171;font-size:11px;">Fed ?癒?텦 ?곕벡????餓Β??쑨??揶쏅Ŋ???/span></div>
+          <div class="dts-row"><span class="dts-name">TGA 疫뀀맩弛?/span><span style="color:#f87171;font-size:11px;">?硫명닊???夷뚧뤃?肄덅쳸?쀫뻬 ????뽰㉦ ??る땾??/span></div>
+          <div class="dts-row"><span class="dts-name">RRP 筌앹빓?</span><span style="color:#f87171;font-size:11px;">MMF揶쎛 Fed???癒?닊 ??됲뒄??/span></div>
+          <div class="dts-row"><span class="dts-name">Tax Day (4??</span><span style="color:#f87171;font-size:11px;">TGA 疫뀀맩弛???NL ??ｋ┛ ?類ｌ뺏??/span></div>
+          <div class="dts-row"><span class="dts-name">?곕뗄??????(?브쑨由?</span><span style="color:#f87171;font-size:11px;">1/15 夷?4/15 夷?6/15 夷?9/15??/span></div>
+          <div class="dts-row"><span class="dts-name">T-Bill ??域뱀뮆??獄쏆뮉六?/span><span style="color:#f87171;font-size:11px;">??뽰㉦ ?癒?닊 ??肄덃에???る땾??/span></div>
+          <div class="dts-row"><span class="dts-name">?봔筌?쑵釉????곷꺖 ??/span><span style="color:#f87171;font-size:11px;">TGA ???????NL 疫뀀맧???/span></div>
+          <div class="dts-row"><span class="dts-name">疫꿸퀣?疫뀀뜄???紐꾧맒</span><span style="color:#f87171;font-size:11px;">RRP 疫뀀뜄??筌띲끇??????癒?닊?醫롰뀱??/span></div>
         </div>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.25);">
-        ?뮕 <b style="color:rgba(255,255,255,0.4);">?듭떖 怨듭떇:</b> NL = WALCL ??TGA ??RRP &nbsp;쨌&nbsp;
-        NL???곸듅?섎㈃ ?쒖쨷 ?좊룞??利앷? ???꾪뿕?먯궛 ?좏샇 寃쏀뼢 &nbsp;쨌&nbsp;
+        ?裕?<b style="color:rgba(255,255,255,0.4);">???뼎 ?⑤벊??</b> NL = WALCL ??TGA ??RRP &nbsp;夷?nbsp;
+        NL???怨몃뱟??롢늺 ??뽰㉦ ?醫딅짗??筌앹빓? ???袁る퓮?癒?텦 ?醫륁깈 野껋?堉?&nbsp;夷?nbsp;
         <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL??/a> &nbsp;
         <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA??/a> &nbsp;
         <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP??/a>
@@ -1368,43 +1376,43 @@ HTML_TEMPLATE = """
   </details>
 
   <details class="collapsible">
-    <summary>怨꾩궛 諛⑸쾿濡?/summary>
+    <summary>?④쑴沅?獄쎻뫖苡욘에?/summary>
     <div class="collapsible-body">
       <div class="method-box" style="margin-bottom:0;">
         <h3>1. Net Liquidity</h3>
         <div class="formula">NL = WALCL ??TGA ??RRP</div>
-        <div class="desc"><b>WALCL</b>: Fed 珥앹옄????留롮쓣?섎줉 ?쒖쨷???덉씠 留롮씠 ?由??곹깭</div>
-        <div class="desc"><b>TGA 李④컧</b>: ?щТ遺媛 Fed???덉튂???꾧툑 ???쒖옣???由ъ? ?딆? ??/div>
-        <div class="desc"><b>RRP 李④컧</b>: MMF ?깆씠 Fed??留↔릿 ??젅???붿븸 ???쒖옣 諛뽰뿉 ?덈뒗 ??/div>
-        <div class="desc" style="margin-top:6px;">??Michael Howell(CrossBorder Capital), Lyn Alden ?깆씠 ?以묓솕. Fed ?좊룞?깆씠 ?ㅼ젣濡??쒖옣???쇰쭏????ㅼ엳?붿? 痢≪젙.</div>
-        <h3 style="margin-top:14px;">2. NL ?뚭? 怨듭젙媛移?/h3>
-        <div class="formula">SPX_FV = slope 횞 NL + intercept</div>
-        <div class="desc">2000?꾨????꾩옱源뚯? ?쇨컙 ?곗씠?곕줈 ?좏삎?뚭?. NL????SPX 怨듭젙媛移섃넁 愿怨?紐⑤뜽留?</div>
-        {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R짼={{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
-        <h3 style="margin-top:14px;">3. 愿대━??/h3>
-        <div class="formula">愿대━??= (SPX?꾩옱媛 ??FV) / FV 횞 100 (%)</div>
-        <div class="desc">?묒닔(+): 怨좏룊媛 &nbsp;|&nbsp; ?뚯닔(??: ??됯?</div>
-        <div class="warn">??NL?봖PX ?곴?愿怨?R짼??.6~0.8)???쒕낯 湲곌컙???섏〈?섎ŉ, ?멸낵愿怨꾧? ?꾨땶 ?곴?愿怨꾩엯?덈떎. ?덈???FV蹂대떎 <b>諛⑺뼢?굿룰눼由?異붿꽭</b> ?꾩＜濡??쒖슜 沅뚯옣.</div>
+        <div class="desc"><b>WALCL</b>: Fed ?μ빘?????筌띾‘???롮쨯 ??뽰㉦????됱뵠 筌띾‘???????怨밴묶</div>
+        <div class="desc"><b>TGA 筌△몿而?/b>: ??龜?봔揶쎛 Fed????됲뒄???袁㏉닊 ????뽰삢?????귐? ??? ??/div>
+        <div class="desc"><b>RRP 筌△몿而?/b>: MMF ?源놁뵠 Fed??筌띯넄由???????遺용만 ????뽰삢 獄쏅쉼肉???덈뮉 ??/div>
+        <div class="desc" style="margin-top:6px;">??Michael Howell(CrossBorder Capital), Lyn Alden ?源놁뵠 ??餓λ쵑?? Fed ?醫딅짗?源놁뵠 ??쇱젫嚥???뽰삢????곗춳??????쇱뿳?遺? 筌β돦??</div>
+        <h3 style="margin-top:14px;">2. NL ??? ?⑤벊?쇿첎?燁?/h3>
+        <div class="formula">SPX_FV = slope ??NL + intercept</div>
+        <div class="desc">2000?袁????袁⑹삺繹먮슣? ??⑥퍢 ?怨쀬뵠?怨뺤쨮 ?醫륁굨???. NL????SPX ?⑤벊?쇿첎?燁살꼦???온??筌뤴뫀?쏙쭕?</div>
+        {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R吏?{{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
+        <h3 style="margin-top:14px;">3. ?용????/h3>
+        <div class="formula">?용????= (SPX?袁⑹삺揶쎛 ??FV) / FV ??100 (%)</div>
+        <div class="desc">?臾믩땾(+): ?⑥쥚猷듿첎? &nbsp;|&nbsp; ???땾(??: ?????</div>
+        <div class="warn">??NL?遊뻇X ?怨??온??R吏??.6~0.8)????뺣궚 疫꿸퀗而????뤵??렽? ?硫몃궢?온?④쑨? ?袁⑤빒 ?怨??온?④쑴???덈뼄. ?????FV癰귣???<b>獄쎻뫚堉?援용０?쇘뵳??곕뗄苑?/b> ?袁⑼폒嚥???뽰뒠 亦낅슣??</div>
       </div>
     </div>
   </details>
 
-  <div class="section-title">?붿빟</div>
+  <div class="section-title">?遺용튋</div>
   <div class="summary-box">
-    <div class="row"><span class="lbl">湲곗???/span><span class="val">{{ summary.base_date }}</span></div>
+    <div class="row"><span class="lbl">疫꿸퀣???/span><span class="val">{{ summary.base_date }}</span></div>
     <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val">{{ summary.walcl_raw }}</span></div>
     <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val">{{ summary.tga_raw }}</span></div>
     <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val">{{ summary.rrp_raw }}</span></div>
     <div class="row"><span class="lbl">Net Liquidity</span><span class="val {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_raw }} &nbsp;({{ summary.nl_chg }})</span></div>
     <hr class="divider">
-    <div class="row"><span class="lbl">NL ?뚭? 怨듭젙媛移?/span><span class="val">{{ summary.fv_nl }}</span></div>
-    <div class="row"><span class="lbl">SPX ?꾩옱媛</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
+    <div class="row"><span class="lbl">NL ??? ?⑤벊?쇿첎?燁?/span><span class="val">{{ summary.fv_nl }}</span></div>
+    <div class="row"><span class="lbl">SPX ?袁⑹삺揶쎛</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
   </div>
 
-  <div class="section-title">理쒓렐 10 ?곸뾽???곗씠??/div>
+  <div class="section-title">筌ㅼ뮄??10 ?怨몃씜???怨쀬뵠??/div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>?좎쭨</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">愿대━??/th></tr></thead>
+      <thead><tr><th>?醫롮?</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">?용????/th></tr></thead>
       <tbody>
         {% for row in table_rows %}
         <tr>
@@ -1424,15 +1432,15 @@ HTML_TEMPLATE = """
 
 <div id="tab-tic" class="tab-content">
 {% if tic_error %}
-  <div class="error">TIC ?곗씠???ㅻ쪟: {{ tic_error }}</div>
+  <div class="error">TIC ?怨쀬뵠????살첒: {{ tic_error }}</div>
 {% elif not tic_chart_html %}
-  <div class="loading">TIC ?곗씠??濡쒕뵫 以?..</div>
+  <div class="loading">TIC ?怨쀬뵠??嚥≪뮆逾?餓?..</div>
 {% else %}
 
   <div class="chart-card">
     <div class="chart-header">
       <div>
-        <div class="chart-title">二쇱슂援?誘멸뎅梨?蹂댁쑀????Monthly (2000?뱎resent)
+        <div class="chart-title">雅뚯눘?귝뤃?沃섎㈇?낉㎖?癰귣똻?????Monthly (2000?諭럕esent)
           <a class="src-link" href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank">TIC ??/a>
         </div>
         <div class="legend">
@@ -1446,10 +1454,10 @@ HTML_TEMPLATE = """
     <div id="ctic" style="padding:4px;">{{ tic_chart_html | safe }}</div>
   </div>
 
-  <div class="section-title">理쒖떊 蹂댁쑀???쒖쐞 <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ tic_updated_at }} 湲곗? 쨌 ??6二??꾪뻾 諛쒗몴</span></div>
+  <div class="section-title">筌ㅼ뮇??癰귣똻?????뽰맄 <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ tic_updated_at }} 疫꿸퀣? 夷???6雅??袁る뻬 獄쏆뮉紐?/span></div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>援??</th><th style="text-align:right;">蹂댁쑀??(B)</th><th style="text-align:right;">?꾩썡驪?/th><th style="text-align:right;">鍮꾩쨷</th></tr></thead>
+      <thead><tr><th>#</th><th>???</th><th style="text-align:right;">癰귣똻???(B)</th><th style="text-align:right;">?袁⑹뜞癲?/th><th style="text-align:right;">??쑴夷?/th></tr></thead>
       <tbody>
         {% for row in tic_table %}
         <tr>
@@ -1470,23 +1478,23 @@ HTML_TEMPLATE = """
   </div>
 
   <div class="info-box">
-    <b style="color:#cc0000;">TIC ?곗씠?곕??</b><br>
-    Treasury International Capital ??誘??щТ遺媛 留ㅼ썡 諛쒗몴?섎뒗 ?멸뎅?몄쓽 誘멸뎅梨?蹂댁쑀 ?꾪솴. 以묎뎅쨌?쇰낯??蹂댁쑀??蹂?붾뒗 ?щ윭 ?④텒 諛?誘멸뎅梨?湲덈━???곹뼢??誘몄튂???듭떖 吏??<br><br>
-    <b style="color:#555;">諛쒗몴 ?쇱젙 (留ㅼ썡 18?쇨꼍):</b><br>
-    &nbsp;쨌 1???곗씠????3??18??諛쒗몴<br>
-    &nbsp;쨌 2???곗씠????4??18??諛쒗몴<br>
-    &nbsp;쨌 3???곗씠????5??18??諛쒗몴<br>
-    &nbsp;쨌 <i>?댄븯 ?숈씪 ????긽 ??6二??꾪뻾</i><br><br>
-    <b style="color:#555;">二쇱쓽:</b> 蹂댁쑀?됱? custodian 湲곗? ??以묎뎅 ?ъ옄?먭? 踰④린????됱뿉 ?덊긽 ??踰④린?먮줈 吏묎퀎. 猷⑹뀍遺瑜댄겕쨌耳?대㎤쨌踰④린????湲덉쑖 ?덈툕???믪? ?섏튂???ㅼ젣 ?대떦援?씠 ?꾨땶 ??援??먭툑??媛?μ꽦???믪쓬.
+    <b style="color:#cc0000;">TIC ?怨쀬뵠?怨??</b><br>
+    Treasury International Capital ??沃???龜?봔揶쎛 筌띲끉??獄쏆뮉紐??롫뮉 ?硫몃럢?紐꾩벥 沃섎㈇?낉㎖?癰귣똻? ?袁れ넺. 餓λ쵌?낆쮯??곕궚??癰귣똻???癰궰?遺얜뮉 ??????ｍ뀙 獄?沃섎㈇?낉㎖?疫뀀뜄????怨밸샨??沃섎챷??????뼎 筌왖??<br><br>
+    <b style="color:#555;">獄쏆뮉紐???깆젟 (筌띲끉??18??④펾):</b><br>
+    &nbsp;夷?1???怨쀬뵠????3??18??獄쏆뮉紐?br>
+    &nbsp;夷?2???怨쀬뵠????4??18??獄쏆뮉紐?br>
+    &nbsp;夷?3???怨쀬뵠????5??18??獄쏆뮉紐?br>
+    &nbsp;夷?<i>??꾨릭 ??덉뵬 ????湲???6雅??袁る뻬</i><br><br>
+    <b style="color:#555;">雅뚯눘??</b> 癰귣똻???? custodian 疫꿸퀣? ??餓λ쵌??????癒? 甕겸몿由??????깅퓠 ??딄맒 ??甕겸몿由?癒?쨮 筌욌쵌?? ?룐뫗?띺겫??쒕똾寃뺤쮯?냈???ㅼ쮯甕겸몿由????疫뀀뜆????덊닏???誘? ??륂뒄????쇱젫 ????뤃????袁⑤빒 ?????癒?닊??揶쎛?關苑???誘れ벉.
   </div>
 
 {% endif %}
 </div>
 
   <div class="footer">
-    Net Liquidity: <a href="https://fred.stlouisfed.org" target="_blank" style="color:#60a5fa;text-decoration:none;">FRED</a> (WALCL쨌WDTGAL쨌RRPONTSYD쨌SP500) &nbsp;|&nbsp;
-    TGA ?ъ슜泥? <a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" style="color:#60a5fa;text-decoration:none;">fiscaldata.treasury.gov</a> &nbsp;|&nbsp;
-    援??蹂?誘멸뎅梨? <a href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank" style="color:#60a5fa;text-decoration:none;">U.S. Treasury TIC</a> &nbsp;|&nbsp; 2000?뱎resent
+    Net Liquidity: <a href="https://fred.stlouisfed.org" target="_blank" style="color:#60a5fa;text-decoration:none;">FRED</a> (WALCL夷똚DTGAL夷똓RPONTSYD夷똕P500) &nbsp;|&nbsp;
+    TGA ???쒙㎗? <a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" style="color:#60a5fa;text-decoration:none;">fiscaldata.treasury.gov</a> &nbsp;|&nbsp;
+    ???癰?沃섎㈇?낉㎖? <a href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank" style="color:#60a5fa;text-decoration:none;">U.S. Treasury TIC</a> &nbsp;|&nbsp; 2000?諭럕esent
   </div>
 </div>
 </body>

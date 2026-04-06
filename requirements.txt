@@ -7,3 +7,4 @@ psycopg2-binary==2.9.9
 pytz==2024.1
 yfinance==0.2.54
 yfinance==0.2.54
+yfinance==0.2.54
