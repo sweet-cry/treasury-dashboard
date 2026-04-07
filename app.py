@@ -765,6 +765,10 @@ def cron_nl():
     return jsonify({"status": "ok", "updated_at": kst.strftime("%Y-%m-%d %H:%M KST"), "next": "daily 09:00 KST / Wed 16:30 KST"})
 
 
+@app.route("/api/debug")
+def debug_info():
+    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error")})
+
 @app.route("/api/cron/tic")
 def cron_tic():
     secret = request.headers.get("Authorization", "")
