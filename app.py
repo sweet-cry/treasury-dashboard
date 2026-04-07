@@ -269,12 +269,12 @@ def build_nl_summary(df):
     if fv_nl is not None and spx is not None and fv_nl != 0:
         gap = (spx - fv_nl) / fv_nl * 100
         fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'고평가' if gap>0 else '저평가'}"
-        fv_nl_cheap = gap < 0
+        fv_nl_cheap = bool(gap < 0)
 
     return {
         "base_date": df.index[-1].strftime("%Y-%m-%d"),
         "nl": fmt_val(latest["NL"]), "nl_raw": f"{latest['NL']:,.0f}B",
-        "nl_chg": f"{'▲' if chg>=0 else '▼'} {fmt_val(abs(chg))} DoD", "nl_chg_pos": chg >= 0,
+        "nl_chg": f"{'▲' if chg>=0 else '▼'} {fmt_val(abs(chg))} DoD", "nl_chg_pos": bool(chg >= 0),
         "walcl": fmt_val(latest["WALCL"]), "walcl_raw": f"{latest['WALCL']:,.0f}B",
         "walcl_date": walcl_date.strftime("%m-%d") if walcl_date else "—",
         "tga": fmt_val(latest["TGA"]), "tga_raw": f"{latest['TGA']:,.0f}B",
@@ -305,10 +305,10 @@ def build_nl_table(df):
             "walcl": f"{row['WALCL']:,.0f}", "tga": f"{row['TGA']:,.0f}", "rrp": f"{row['RRP']:,.0f}",
             "nl": f"{row['NL']:,.0f}",
             "dod": f"{'▲' if dod>0 else ('▼' if dod<0 else '─')}{abs(round(dod)):,.0f}" if dod is not None else "—",
-            "dod_pos": None if dod is None or round(dod)==0 else dod > 0,
+            "dod_pos": None if dod is None or round(dod)==0 else bool(dod > 0),
             "spx": f"{spx:,.0f}" if spx else "—",
             "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
-            "gap": gap, "gap_pos": gap_pos,
+            "gap": gap, "gap_pos": bool(gap_pos) if gap_pos is not None else None,
         })
     return list(reversed(rows[-30:]))
 
