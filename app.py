@@ -181,8 +181,8 @@ def build_nl_data():
         missing = yf_spx.index.difference(spx_d.index)
         if len(missing) > 0:
             spx_d = __import__("pandas").concat([spx_d, yf_spx.loc[missing]]).sort_index()
-    except Exception:
-        pass
+    except Exception as yf_err:
+        db_set("yf_error", str(yf_err))
 
     df = pd.DataFrame({"RRP": rrp_d}).sort_index()
     df["TGA"]   = tga_d.reindex(df.index, method="ffill")
