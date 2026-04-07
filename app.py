@@ -164,6 +164,47 @@ def fmt_val(v):
     return f"{v:,.0f}B"
 
 
+
+def build_nl_data_fast():
+    """최근 90일 데이터만 가져오는 경량 버전 (Vercel 타임아웃 대응)"""
+    import datetime as _dt
+    fast_start = (_dt.date.today() - _dt.timedelta(days=90)).strftime("%Y-%m-%d")
+    walcl_w = fetch_series("WALCL", fast_start, frequency="w")
+    tga_d, _ = fetch_auto("WDTGAL", fast_start, preferred="w")
+    rrp_d, _ = fetch_auto("RRPONTSYD", fast_start, preferred="d")
+    try:
+        spx_d, _ = fetch_auto("SP500", fast_start, preferred="d")
+    except Exception:
+        spx_d = pd.Series(dtype=float, name="SP500")
+
+    # Yahoo Finance fallback (direct API)
+    try:
+        _url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC"
+        _params = {"interval": "1d", "range": "30d"}
+        _headers = {"User-Agent": "Mozilla/5.0"}
+        _r = req.get(_url, params=_params, headers=_headers, timeout=10)
+        _j = _r.json()["chart"]["result"][0]
+        _ts = pd.to_datetime(_j["timestamp"], unit="s").normalize()
+        _close = [x if x is not None else float("nan") for x in _j["indicators"]["quote"][0]["close"]]
+        yf_spx = pd.Series(_close, index=_ts, name="SP500").dropna()
+        missing = yf_spx.index.difference(spx_d.index)
+        if len(missing) > 0:
+            spx_d = pd.concat([spx_d, yf_spx.loc[missing]]).sort_index()
+        db_set("yf_error", None)
+    except Exception as yf_err:
+        db_set("yf_error", str(yf_err))
+
+    df = pd.DataFrame({"RRP": rrp_d}).sort_index()
+    df["TGA"]   = tga_d.reindex(df.index, method="ffill")
+    df["WALCL"] = walcl_w.reindex(df.index, method="ffill")
+    df["SP500"] = spx_d.reindex(df.index, method="ffill")
+    df = df.dropna(subset=["RRP", "WALCL", "TGA"])
+    df["NL"] = df["WALCL"] - df["TGA"] - df["RRP"]
+    df["NL_DoD"] = df["NL"].diff()
+    # 회귀는 전체 데이터 없이 단순 추정 생략 (FV_NL = None)
+    df["FV_NL"] = np.nan
+    return df, None
+
 def build_nl_data():
     walcl_w = fetch_series("WALCL", START_DATE, frequency="w")
     tga_d, _ = fetch_auto("WDTGAL", START_DATE, preferred="w")
@@ -664,16 +705,14 @@ def next_thursday_kst():
 
 
 def run_refresh_nl():
+    """경량 버전: summary + table만 업데이트 (차트 제외, ~5초)"""
     try:
-        df, model_info = build_nl_data()
+        df, model_info = build_nl_data_fast()
         db_set("nl_summary",   build_nl_summary(df))
-        db_set("nl_chart1",    build_chart1(df))
-        db_set("nl_chart2",    build_chart2(df))
         db_set("nl_table",     build_nl_table(df))
-        db_set("nl_model",     model_info)
         db_set("nl_next_h41",  next_thursday_kst())
         db_set("nl_error",     None)
-        print("NL 갱신 완료")
+        print("NL 갱신 완료 (fast)")
     except Exception as e:
         db_set("nl_error", str(e))
         print(f"NL 오류: {e}")
@@ -1071,34 +1110,35 @@ HTML_TEMPLATE = """
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
 
-  <div class="chart-card">
-    <div class="chart-header">
-      <div><div class="chart-title">WALCL 구성: Net Liquidity · TGA · RRP — Daily (2000–present)
-        <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED ↗</a>
+  <div class="chart-card" style="padding:16px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div class="chart-title" style="margin-bottom:6px;">WALCL · TGA · RRP · S&P 500 — 장기 차트 (2000–present)</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.3);">빠른 업데이트를 위해 차트는 FRED에서 직접 확인</div>
       </div>
-      <div class="legend">
-        <span><span style="width:12px;height:8px;background:rgba(96,165,250,0.6);border-radius:2px;display:inline-block;"></span>Net Liquidity</span>
-        <span><span style="width:12px;height:8px;background:rgba(52,211,153,0.55);border-radius:2px;display:inline-block;"></span>TGA</span>
-        <span><span style="width:12px;height:8px;background:rgba(251,191,36,0.55);border-radius:2px;display:inline-block;"></span>RRP</span>
-        <span style="font-size:10px;color:rgba(255,255,255,0.2);">음영: 경기침체</span>
-      </div></div>
-      <div class="zoom-btns"><button onclick="zoomChart('c1','in')">+</button><button onclick="zoomChart('c1','out')">−</button><button onclick="resetChart('c1')">↺</button></div>
-    </div>
-    <div id="c1" style="padding:4px;">{{ chart1_html | safe }}</div>
-  </div>
-
-  <div class="chart-card">
-    <div class="chart-header">
-      <div><div class="chart-title">S&P 500 vs NL Regression FV — Daily (2000–present)
-        <a class="src-link" href="https://fred.stlouisfed.org/series/SP500" target="_blank">FRED ↗</a>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="https://fred.stlouisfed.org/graph/?g=1bKMn" target="_blank"
+           style="font-size:11px;padding:6px 14px;border:1px solid rgba(96,165,250,0.4);border-radius:6px;color:#60a5fa;text-decoration:none;background:rgba(96,165,250,0.06);">
+          NL 차트 ↗
+        </a>
+        <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank"
+           style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
+          WALCL ↗
+        </a>
+        <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank"
+           style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
+          TGA ↗
+        </a>
+        <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank"
+           style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
+          RRP ↗
+        </a>
+        <a href="https://fred.stlouisfed.org/series/SP500" target="_blank"
+           style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
+          S&P 500 ↗
+        </a>
       </div>
-      <div class="legend">
-        <span><span style="width:16px;height:2px;background:#e2e2e2;display:inline-block;"></span>S&P 500</span>
-        <span><span style="width:16px;height:2px;border-top:2px dashed #60a5fa;display:inline-block;"></span>NL 회귀 FV</span>
-      </div></div>
-      <div class="zoom-btns"><button onclick="zoomChart('c2','in')">+</button><button onclick="zoomChart('c2','out')">−</button><button onclick="resetChart('c2')">↺</button></div>
     </div>
-    <div id="c2" style="padding:4px;">{{ chart2_html | safe }}</div>
   </div>
 
   <div class="section-title">TGA 사용처 · DTS · QRA
