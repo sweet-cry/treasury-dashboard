@@ -294,6 +294,16 @@ def build_nl_summary(df):
     tga_date   = df["TGA"].last_valid_index()
     rrp_date   = df["RRP"].last_valid_index()
 
+    prev_walcl = float(prev["WALCL"]) if prev is not None and not pd.isna(prev["WALCL"]) else None
+    prev_tga   = float(prev["TGA"])   if prev is not None and not pd.isna(prev["TGA"])   else None
+    prev_rrp   = float(prev["RRP"])   if prev is not None and not pd.isna(prev["RRP"])   else None
+    walcl_chg  = float(latest["WALCL"]) - prev_walcl if prev_walcl is not None else 0
+    tga_chg    = float(latest["TGA"])   - prev_tga   if prev_tga   is not None else 0
+    rrp_chg    = float(latest["RRP"])   - prev_rrp   if prev_rrp   is not None else 0
+    walcl_pos  = bool(walcl_chg >= 0)   # WALCL↑=유입=green
+    tga_pos    = bool(tga_chg   <= 0)   # TGA↓=유입=green
+    rrp_pos    = bool(rrp_chg   <= 0)   # RRP↓=유입=green
+
     fv_nl_gap = fv_nl_cheap = None
     if fv_nl is not None and spx is not None and fv_nl != 0:
         gap = (spx - fv_nl) / fv_nl * 100
@@ -306,10 +316,13 @@ def build_nl_summary(df):
         "nl_chg": f"{'▲' if chg>=0 else '▼'} {fmt_val(abs(chg))} DoD", "nl_chg_pos": bool(chg >= 0),
         "walcl": fmt_val(latest["WALCL"]), "walcl_raw": f"{latest['WALCL']:,.0f}B",
         "walcl_date": walcl_date.strftime("%m-%d") if walcl_date else "—",
+        "walcl_pos": walcl_pos,
         "tga": fmt_val(latest["TGA"]), "tga_raw": f"{latest['TGA']:,.0f}B",
         "tga_date": tga_date.strftime("%m-%d") if tga_date else "—",
+        "tga_pos": tga_pos,
         "rrp": fmt_val(latest["RRP"]), "rrp_raw": f"{latest['RRP']:,.0f}B",
         "rrp_date": rrp_date.strftime("%m-%d") if rrp_date else "—",
+        "rrp_pos": rrp_pos,
         "spx_raw": f"{spx:,.0f}" if spx else "—",
         "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
         "fv_nl_gap": fv_nl_gap or "데이터 부족", "fv_nl_cheap": fv_nl_cheap,
@@ -1171,9 +1184,9 @@ HTML_TEMPLATE = """
   <div class="section-title">요약</div>
   <div class="summary-box">
     <div class="row"><span class="lbl">기준일</span><span class="val">{{ summary.base_date }}</span></div>
-    <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val">{{ summary.walcl_raw }}</span></div>
-    <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val">{{ summary.tga_raw }}</span></div>
-    <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val">{{ summary.rrp_raw }}</span></div>
+    <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val {{ 'pos' if summary.walcl_pos else 'neg' }}">{{ summary.walcl_raw }}</span></div>
+    <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val {{ 'pos' if summary.tga_pos else 'neg' }}">{{ summary.tga_raw }}</span></div>
+    <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val {{ 'pos' if summary.rrp_pos else 'neg' }}">{{ summary.rrp_raw }}</span></div>
     <div class="row"><span class="lbl">Net Liquidity</span><span class="val {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_raw }} &nbsp;({{ summary.nl_chg }})</span></div>
     <hr class="divider">
     <div class="row"><span class="lbl">NL 회귀 공정가치</span><span class="val">{{ summary.fv_nl }}</span></div>
