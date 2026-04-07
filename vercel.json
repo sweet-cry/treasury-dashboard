@@ -18,10 +18,5 @@
       "path": "/api/cron/tic",
       "schedule": "0 2 18 * *"
     }
-  ],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
