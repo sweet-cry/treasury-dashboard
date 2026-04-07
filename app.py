@@ -802,6 +802,43 @@ def run_refresh_tic():
         print(f"TIC 오류: {e}")
 
 
+def _build_monthly_summary(history):
+    """history 리스트에서 월별 서머리 계산 (balance 기준)"""
+    from collections import defaultdict
+    monthly = defaultdict(lambda: {"total_dep_raw": 0.0, "total_wit_raw": 0.0, "days": 0})
+    for h in history:
+        month = h["date"][:7]  # "2025-04"
+        bal = h.get("balance") or []
+        dep_raw = wit_raw = 0.0
+        for b in bal:
+            name = b.get("name", "")
+            amt_str = b.get("amt", "0").replace("T", "e6").replace("B", "e3").replace("M", "")
+            try:
+                amt = float(amt_str)
+            except Exception:
+                amt = 0.0
+            if "입금" in name or "Deposit" in name:
+                dep_raw += amt
+            elif "출금" in name or "Withdrawal" in name:
+                wit_raw += amt
+        monthly[month]["total_dep_raw"] += dep_raw
+        monthly[month]["total_wit_raw"] += wit_raw
+        monthly[month]["days"] += 1
+
+    summaries = []
+    for month, v in sorted(monthly.items(), reverse=True):
+        net = v["total_dep_raw"] - v["total_wit_raw"]
+        summaries.append({
+            "month": month,
+            "net": f"{'+'if net>=0 else ''}{net/1000:.1f}B" if abs(net) >= 1000 else f"{'+'if net>=0 else ''}{net:.0f}M",
+            "net_pos": bool(net >= 0),
+            "total_dep": f"{v['total_dep_raw']/1000:.1f}B" if v['total_dep_raw'] >= 1000 else f"{v['total_dep_raw']:.0f}M",
+            "total_wit": f"{v['total_wit_raw']/1000:.1f}B" if v['total_wit_raw'] >= 1000 else f"{v['total_wit_raw']:.0f}M",
+            "days": v["days"],
+        })
+    return summaries[:12]  # 최대 12개월
+
+
 def run_refresh_dts():
     try:
         dep, wit, bal, date = fetch_dts_data()
@@ -816,8 +853,11 @@ def run_refresh_dts():
         history.insert(0, {"date": date, "deposits": dep, "withdrawals": wit, "balance": bal})
         history = history[:23]
         db_set("dts_history", history)
+        # 월별 서머리 갱신
+        monthly_summary = _build_monthly_summary(history)
+        db_set("dts_monthly_summary", monthly_summary)
         db_set("dts_error",   None)
-        print(f"DTS 갱신 완료: {date} (history {len(history)}일)")
+        print(f"DTS 갱신 완료: {date} (history {len(history)}일, monthly {len(monthly_summary)}개월)")
     except Exception as e:
         db_set("dts_error", str(e))
         print(f"DTS 오류: {e}")
@@ -858,7 +898,8 @@ def index():
     dts_balance     = db_get("dts_balance") or []
     dts_date        = db_get("dts_date") or "—"
     dts_error       = db_get("dts_error")
-    dts_history     = db_get("dts_history") or []
+    dts_history         = db_get("dts_history") or []
+    dts_monthly_summary = db_get("dts_monthly_summary") or []
 
     qra_data  = db_get("qra_data")
     qra_error = db_get("qra_error")
@@ -877,6 +918,7 @@ def index():
         dts_balance=dts_balance, dts_date=dts_date, dts_error=dts_error,
         qra_data=qra_data, qra_error=qra_error,
         dts_history=dts_history,
+        dts_monthly_summary=dts_monthly_summary,
     )
 
 
@@ -1067,6 +1109,19 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    /* DTS 캘린더 셀 */
+    .dts-cal-cell{border-radius:5px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;}
+    .dts-cal-cell-inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:5px;font-size:11px;font-weight:500;transition:background .1s;}
+    .dts-cal-cell-inner:hover{background:rgba(255,255,255,0.06);}
+    /* DTS 월 네비게이션 */
+    .dts-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+    .dts-cal-nav-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:rgba(255,255,255,0.4);font-size:12px;padding:3px 10px;cursor:pointer;}
+    .dts-cal-nav-btn:hover{background:rgba(255,255,255,0.06);color:#fff;}
+    .dts-cal-month-label{font-size:12px;font-weight:500;color:rgba(255,255,255,0.6);}
+    /* 이전달 서머리 카드 */
+    .dts-summary-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px 20px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;}
+    .dts-summary-card .s-label{font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+    .dts-summary-card .s-val{font-size:16px;font-weight:500;}
     /* QRA 경매 툴팁 - JS 제어 fixed 팝업 */
     #auction-tooltip{display:none;position:fixed;z-index:9999;
       background:#1a1a22;border:1px solid rgba(255,255,255,0.15);border-radius:8px;
@@ -1285,6 +1340,11 @@ HTML_TEMPLATE = """
 
       <!-- 캘린더 -->
       <div style="margin-bottom:10px;">
+        <div class="dts-cal-nav">
+          <button class="dts-cal-nav-btn" id="dts-cal-btn-prev" onclick="dtsNavMonth(-1)">&#8249; 이전달</button>
+          <span class="dts-cal-month-label" id="dts-cal-nav-label"></span>
+          <button class="dts-cal-nav-btn" id="dts-cal-btn-next" onclick="dtsNavMonth(1)">다음달 &#8250;</button>
+        </div>
         <div id="dts-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px;"></div>
         <div style="display:flex;gap:10px;font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">
           <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(96,165,250,0.25);margin-right:3px;"></span>데이터 있음</span>
@@ -1298,41 +1358,93 @@ HTML_TEMPLATE = """
       <script>
       (function(){
         var history = {{ dts_history | tojson }};
+        var monthlySummary = {{ dts_monthly_summary | tojson }};
         var dataMap = {};
         history.forEach(function(h){ dataMap[h.date] = h; });
 
-        var selected = history.length > 0 ? history[0].date : null;
+        // 현재 보여줄 월 (최신 데이터 기준)
+        var baseDate = history.length > 0 ? new Date(history[0].date + 'T00:00:00') : new Date();
+        var viewYear  = baseDate.getFullYear();
+        var viewMonth = baseDate.getMonth(); // 0-based
+        var selected  = history.length > 0 ? history[0].date : null;
+
+        // 최신 데이터가 있는 월 (이 월까지만 "현재달"로 앞으로 못 감)
+        var latestYear  = viewYear;
+        var latestMonth = viewMonth;
+
+        function fmtMonth(y, m){
+          return y + '년 ' + (m+1) + '월';
+        }
+
+        function isCurrent(y, m){
+          return y === latestYear && m === latestMonth;
+        }
+
+        function getSummaryForMonth(y, m){
+          var key = y + '-' + String(m+1).padStart(2,'0');
+          return monthlySummary.find(function(s){ return s.month === key; }) || null;
+        }
+
+        function renderNav(){
+          var nav = document.getElementById('dts-cal-nav-label');
+          var btnPrev = document.getElementById('dts-cal-btn-prev');
+          var btnNext = document.getElementById('dts-cal-btn-next');
+          if(nav) nav.textContent = fmtMonth(viewYear, viewMonth);
+          if(btnNext) btnNext.disabled = isCurrent(viewYear, viewMonth);
+          if(btnNext) btnNext.style.opacity = isCurrent(viewYear, viewMonth) ? '0.25' : '1';
+        }
 
         function renderCal(){
           var grid = document.getElementById('dts-cal-grid');
           if(!grid) return;
+
           var dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
           var html = dows.map(function(d){
-            return '<div style="font-size:10px;color:rgba(255,255,255,0.25);text-align:center;padding:3px 0;">'+d+'</div>';
+            return '<div style="font-size:10px;color:rgba(255,255,255,0.2);text-align:center;padding:3px 0;">'+d+'</div>';
           }).join('');
 
-          // 이번달 기준 (최신 날짜 기준)
-          var baseDate = selected ? new Date(selected+'T00:00:00') : new Date();
-          var yr = baseDate.getFullYear(), mo = baseDate.getMonth();
-          var firstDow = new Date(yr, mo, 1).getDay();
+          var yr = viewYear, mo = viewMonth;
+          var firstDow   = new Date(yr, mo, 1).getDay();
           var daysInMonth = new Date(yr, mo+1, 0).getDate();
 
           for(var i=0;i<firstDow;i++) html += '<div></div>';
           for(var d=1;d<=daysInMonth;d++){
             var key = yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
             var dow = new Date(yr,mo,d).getDay();
-            var isWE = dow===0||dow===6;
+            var isWE  = dow===0||dow===6;
             var hasData = !!dataMap[key];
-            var isSel = key===selected;
-            var bg = isSel ? 'rgba(96,165,250,0.3)' : hasData ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.03)';
+            var isSel   = key===selected;
+            var bg     = isSel ? 'rgba(96,165,250,0.3)'  : hasData ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.03)';
             var border = isSel ? '1px solid rgba(96,165,250,0.6)' : hasData ? '1px solid rgba(96,165,250,0.2)' : '1px solid rgba(255,255,255,0.05)';
-            var color = isSel ? '#60a5fa' : hasData ? 'rgba(255,255,255,0.7)' : isWE ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.25)';
+            var color  = isSel ? '#60a5fa' : hasData ? 'rgba(255,255,255,0.7)' : isWE ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)';
             var cursor = hasData ? 'pointer' : 'default';
+            var dot    = (hasData && !isSel) ? '<span style="display:block;width:3px;height:3px;border-radius:50%;background:rgba(96,165,250,0.7);margin-top:2px;"></span>' : '';
             html += '<div class="dts-cal-cell" style="background:'+bg+';border:'+border+';">'
-              + '<div class="dts-cal-cell-inner" style="cursor:'+cursor+';color:'+color+';" onclick="dtsSelectDay(\''+key+'\')">'+d+(hasData&&!isSel?'<span style="display:block;width:3px;height:3px;border-radius:50%;background:rgba(96,165,250,0.7);margin-top:2px;"></span>':'')+'</div>'
+              + '<div class="dts-cal-cell-inner" style="cursor:'+cursor+';color:'+color+';" onclick="dtsSelectDay(\''+key+'\')">'+d+dot+'</div>'
               + '</div>';
           }
           grid.innerHTML = html;
+
+          // 이전달이면 서머리 카드, 현재달이면 상세
+          var detailEl = document.getElementById('dts-detail');
+          if(!isCurrent(yr, mo)){
+            var sm = getSummaryForMonth(yr, mo);
+            if(sm){
+              var netColor = sm.net_pos ? '#34d399' : '#f87171';
+              detailEl.innerHTML =
+                '<div class="dts-summary-card">'
+                + '<div><div class="s-label">월간 순변동</div><div class="s-val" style="color:'+netColor+';">'+sm.net+'</div></div>'
+                + '<div><div class="s-label">총 입금</div><div class="s-val" style="color:#34d399;">'+sm.total_dep+'</div></div>'
+                + '<div><div class="s-label">총 출금</div><div class="s-val" style="color:#f87171;">'+sm.total_wit+'</div></div>'
+                + '<div><div class="s-label">집계 영업일</div><div class="s-val" style="color:rgba(255,255,255,0.5);">'+sm.days+'일</div></div>'
+                + '<div style="font-size:10px;color:rgba(255,255,255,0.2);align-self:flex-end;">※ 이전달 — 일별 상세 없음</div>'
+                + '</div>';
+            } else {
+              detailEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.2);padding:12px 0;">이 달 서머리 데이터 없음</div>';
+            }
+          } else {
+            renderDetail();
+          }
         }
 
         window.dtsSelectDay = function(key){
@@ -1340,6 +1452,18 @@ HTML_TEMPLATE = """
           selected = key;
           renderCal();
           renderDetail();
+        };
+
+        window.dtsNavMonth = function(dir){
+          viewMonth += dir;
+          if(viewMonth < 0){ viewMonth = 11; viewYear--; }
+          if(viewMonth > 11){ viewMonth = 0;  viewYear++; }
+          // 미래로 못 감
+          if(viewYear > latestYear || (viewYear === latestYear && viewMonth > latestMonth)){
+            viewYear = latestYear; viewMonth = latestMonth;
+          }
+          renderNav();
+          renderCal();
         };
 
         function renderDetail(){
@@ -1364,8 +1488,8 @@ HTML_TEMPLATE = """
             + '<div class="dts-card" style="margin-bottom:12px;"><div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 당일 순변동 요약</div>'+balRows+'</div>';
         }
 
+        renderNav();
         renderCal();
-        renderDetail();
       })();
       </script>
       {% endif %}
