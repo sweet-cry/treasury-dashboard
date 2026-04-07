@@ -1,11 +1,22 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
   ],
   "crons": [
-    { "path": "/api/cron/all", "schedule": "30 0 * * *" },
-    { "path": "/api/cron/nl",  "schedule": "0 7 * * *" },
-    { "path": "/api/cron/nl",  "schedule": "30 20 * * 3" },
-    { "path": "/api/cron/tic", "schedule": "0 2 18 * *" }
+    {
+      "path": "/api/cron/nl",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/nl",
+      "schedule": "30 7 * * 4"
+    },
+    {
+      "path": "/api/cron/tic",
+      "schedule": "0 2 18 * *"
+    }
   ]
 }

@@ -760,8 +760,9 @@ def cron_nl():
     secret = request.headers.get("Authorization", "")
     if CRON_SECRET and secret != f"Bearer {CRON_SECRET}":
         return jsonify({"error": "unauthorized"}), 401
-    threading.Thread(target=run_refresh_nl, daemon=True).start()
-    return jsonify({"status": "started"})
+    run_refresh_nl()
+    kst = __import__("datetime").datetime.now(__import__("pytz").timezone("Asia/Seoul"))
+    return jsonify({"status": "ok", "updated_at": kst.strftime("%Y-%m-%d %H:%M KST"), "next": "daily 09:00 KST / Wed 16:30 KST"})
 
 
 @app.route("/api/cron/tic")
