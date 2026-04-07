@@ -102,13 +102,6 @@ def db_get(key):
         return None
 
 
-def _json_default(obj):
-    import numpy as np
-    if isinstance(obj, (np.bool_,)): return bool(obj)
-    if isinstance(obj, (np.integer,)): return int(obj)
-    if isinstance(obj, (np.floating,)): return float(obj)
-    raise TypeError(f"Not serializable: {type(obj)}")
-
 def db_set(key, value):
     try:
         with get_conn() as conn:
@@ -119,7 +112,7 @@ def db_set(key, value):
                     ON CONFLICT (key) DO UPDATE
                       SET value = EXCLUDED.value,
                           updated_at = NOW()
-                """, (key, json.dumps(value, default=_json_default)))
+                """, (key, json.dumps(value)))
             conn.commit()
     except Exception as e:
         print(f"[DB SET ERROR] {key}: {e}")
@@ -710,15 +703,38 @@ def fetch_qra_data():
         {"label": "Bonds(10~30Y)","amt": f"${bond:.0f}B",  "pct": pct(bond),  "color": "#fbbf24"},
         {"label": "TIPS",         "amt": f"${tips:.0f}B",  "pct": pct(tips),  "color": "#a78bfa"},
     ]
-    schedule = [
-        {"label": "Q1: 2026-01-27 완료", "current": False},
-        {"label": "Q2: 2026-04-28 예정", "current": True},
-        {"label": "Q3: 2026-07-27 예정", "current": False},
-        {"label": "Q4: 2026-10-27 예정", "current": False},
-    ]
+    # QRA 일정 자동계산: 매년 1/4/7/10월 마지막 월요일
+    def _qra_dates(year):
+        import calendar
+        results = []
+        for month in [1, 4, 7, 10]:
+            cal = calendar.monthcalendar(year, month)
+            last_monday = max(week[0] for week in cal if week[0] != 0)
+            results.append(datetime(year, month, last_monday).date())
+        return results
+
+    today = datetime.now(pytz.utc).date()
+    _yr = today.year
+    all_dates = _qra_dates(_yr) + [_qra_dates(_yr + 1)[0]]
+    q_labels = ["Q1", "Q2", "Q3", "Q4", "Q1"]
+    schedule = []
+    next_qra_date = None
+    for i, d in enumerate(all_dates):
+        is_past = d < today
+        is_current = not is_past and (next_qra_date is None)
+        if is_current:
+            next_qra_date = d.strftime("%Y-%m-%d")
+        schedule.append({
+            "label": f"{q_labels[i]}: {d.strftime('%Y-%m-%d')} {'완료' if is_past else '예정'}",
+            "current": is_current,
+        })
+    schedule = schedule[:4]
+    if next_qra_date is None:
+        next_qra_date = all_dates[-1].strftime("%Y-%m-%d")
+
     def fmt_b(v): return f"${v:.0f}B" if v >= 1 else f"${v*1000:.0f}M"
     return {
-        "next_qra": "2026-04-28",
+        "next_qra": next_qra_date,
         "tbill_30d": fmt_b(tbill), "coupon_30d": fmt_b(note + bond),
         "tips_30d": fmt_b(tips), "total_30d": fmt_b(total),
         "avg_btc": f"{avg_btc:.2f}x" if avg_btc else "—",
@@ -740,14 +756,20 @@ def next_thursday_kst():
 
 
 def run_refresh_nl():
-    """경량 버전: summary + table만 업데이트 (차트 제외, ~5초)"""
+    """NL 전체 갱신: summary + table + chart1/2 + model_info"""
     try:
-        df, model_info = build_nl_data_fast()
-        db_set("nl_summary",   build_nl_summary(df))
-        db_set("nl_table",     build_nl_table(df))
+        # 차트/회귀는 전체 데이터(2000~) 필요 → build_nl_data 사용
+        df_full, model_info = build_nl_data()
+        db_set("nl_chart1",    build_chart1(df_full))
+        db_set("nl_chart2",    build_chart2(df_full))
+        db_set("nl_model",     model_info)
+        # summary/table은 최신 90일로 충분 → fast 버전으로 덮어쓰기
+        df_fast, _ = build_nl_data_fast()
+        db_set("nl_summary",   build_nl_summary(df_fast))
+        db_set("nl_table",     build_nl_table(df_fast))
         db_set("nl_next_h41",  next_thursday_kst())
         db_set("nl_error",     None)
-        print("NL 갱신 완료 (fast)")
+        print("NL 갱신 완료 (full + fast)")
     except Exception as e:
         db_set("nl_error", str(e))
         print(f"NL 오류: {e}")
@@ -886,7 +908,7 @@ def cron_all():
     secret = request.headers.get("Authorization", "")
     if CRON_SECRET and secret != f"Bearer {CRON_SECRET}":
         return jsonify({"error": "unauthorized"}), 401
-    for fn in [run_refresh_nl, run_refresh_dts, run_refresh_qra]:
+    for fn in [run_refresh_nl, run_refresh_dts, run_refresh_qra, run_refresh_tic]:
         threading.Thread(target=fn, daemon=True).start()
     return jsonify({"status": "started"})
 
