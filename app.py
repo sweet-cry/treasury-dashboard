@@ -772,7 +772,12 @@ def cron_nl():
 
 @app.route("/api/debug")
 def debug_info():
-    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error"), "nl_updated_at": db_get_updated_at("nl_summary"), "nl_summary_exists": db_get("nl_summary") is not None})
+    try:
+        db_set("debug_test", "ping")
+        db_test = db_get("debug_test")
+    except Exception as e:
+        db_test = str(e)
+    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error"), "nl_updated_at": db_get_updated_at("nl_summary"), "nl_summary_exists": db_get("nl_summary") is not None, "db_write_test": db_test})
 
 @app.route("/api/cron/tic")
 def cron_tic():
