@@ -278,6 +278,17 @@ def build_nl_data():
     return df, model_info
 
 
+def _sanitize(obj):
+    """numpy 타입을 Python 기본 타입으로 변환"""
+    import numpy as np
+    if isinstance(obj, dict): return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list): return [_sanitize(v) for v in obj]
+    if isinstance(obj, np.bool_): return bool(obj)
+    if isinstance(obj, np.integer): return int(obj)
+    if isinstance(obj, np.floating): return float(obj)
+    if isinstance(obj, float) and (obj != obj): return None  # NaN
+    return obj
+
 def build_nl_summary(df):
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else None
@@ -295,7 +306,7 @@ def build_nl_summary(df):
         fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'고평가' if gap>0 else '저평가'}"
         fv_nl_cheap = bool(gap < 0)
 
-    return {
+    return _sanitize({
         "base_date": df.index[-1].strftime("%Y-%m-%d"),
         "nl": fmt_val(latest["NL"]), "nl_raw": f"{latest['NL']:,.0f}B",
         "nl_chg": f"{'▲' if chg>=0 else '▼'} {fmt_val(abs(chg))} DoD", "nl_chg_pos": bool(chg >= 0),
@@ -308,7 +319,7 @@ def build_nl_summary(df):
         "spx_raw": f"{spx:,.0f}" if spx else "—",
         "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
         "fv_nl_gap": fv_nl_gap or "데이터 부족", "fv_nl_cheap": fv_nl_cheap,
-    }
+    })
 
 
 def build_nl_table(df):
@@ -334,7 +345,7 @@ def build_nl_table(df):
             "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
             "gap": gap, "gap_pos": bool(gap_pos) if gap_pos is not None else None,
         })
-    return list(reversed(rows[-30:]))
+    return _sanitize(list(reversed(rows[-30:])))
 
 
 def build_chart1(df):
