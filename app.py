@@ -897,7 +897,20 @@ def debug_info():
         db_test = db_get("debug_test")
     except Exception as e:
         db_test = str(e)
-    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error"), "nl_updated_at": db_get_updated_at("nl_summary"), "nl_summary_exists": db_get("nl_summary") is not None, "db_write_test": db_test})
+    dts_history = db_get("dts_history") or []
+    return jsonify({
+        "db_write_test": db_test,
+        "nl_error": db_get("nl_error"),
+        "nl_updated_at": db_get_updated_at("nl_summary"),
+        "nl_summary_exists": db_get("nl_summary") is not None,
+        "yf_error": db_get("yf_error"),
+        "dts_error": db_get("dts_error"),
+        "dts_date": db_get("dts_date"),
+        "dts_history_count": len(dts_history),
+        "dts_history_dates": [h["date"] for h in dts_history],
+        "qra_error": db_get("qra_error"),
+        "qra_exists": db_get("qra_data") is not None,
+    })
 
 @app.route("/api/cron/tic")
 def cron_tic():
