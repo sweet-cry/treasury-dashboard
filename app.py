@@ -288,7 +288,7 @@ def build_nl_summary(df):
 
 
 def build_nl_table(df):
-    tail = df.tail(11).copy()
+    tail = df.tail(31).copy()
     rows = []
     for i, (date, row) in enumerate(tail.iterrows()):
         prev_nl = tail.iloc[i-1]["NL"] if i > 0 else None
@@ -310,7 +310,7 @@ def build_nl_table(df):
             "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
             "gap": gap, "gap_pos": gap_pos,
         })
-    return list(reversed(rows[-10:]))
+    return list(reversed(rows[-30:]))
 
 
 def build_chart1(df):
@@ -1110,6 +1110,36 @@ HTML_TEMPLATE = """
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
 
+  <div class="section-title">요약</div>
+  <div class="summary-box">
+    <div class="row"><span class="lbl">기준일</span><span class="val">{{ summary.base_date }}</span></div>
+    <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val">{{ summary.walcl_raw }}</span></div>
+    <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val">{{ summary.tga_raw }}</span></div>
+    <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val">{{ summary.rrp_raw }}</span></div>
+    <div class="row"><span class="lbl">Net Liquidity</span><span class="val {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_raw }} &nbsp;({{ summary.nl_chg }})</span></div>
+    <hr class="divider">
+    <div class="row"><span class="lbl">NL 회귀 공정가치</span><span class="val">{{ summary.fv_nl }}</span></div>
+    <div class="row"><span class="lbl">SPX 현재가</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
+  </div>
+
+  <div class="section-title">최근 30 영업일 데이터</div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>날짜</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">괴리율</th></tr></thead>
+      <tbody>
+        {% for row in table_rows %}
+        <tr>
+          <td>{{ row.date }}</td><td>{{ row.walcl }}</td><td>{{ row.tga }}</td><td>{{ row.rrp }}</td>
+          <td><strong>{{ row.nl }}</strong></td>
+          <td>{% if row.dod_pos is none %}<span style="color:rgba(255,255,255,0.3);font-size:11px;">{{ row.dod }}</span>{% elif row.dod_pos %}<span class="badge-up">{{ row.dod }}</span>{% else %}<span class="badge-dn">{{ row.dod }}</span>{% endif %}</td>
+          <td>{{ row.spx }}</td><td>{{ row.fv_nl }}</td>
+          <td>{% if row.gap is not none %}<span class="{{ 'badge-dn' if row.gap_pos else 'badge-up' }}">{{ row.gap }}</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
   <div class="chart-card" style="padding:16px 20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
@@ -1448,36 +1478,6 @@ HTML_TEMPLATE = """
       </div>
     </div>
   </details>
-
-  <div class="section-title">요약</div>
-  <div class="summary-box">
-    <div class="row"><span class="lbl">기준일</span><span class="val">{{ summary.base_date }}</span></div>
-    <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val">{{ summary.walcl_raw }}</span></div>
-    <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val">{{ summary.tga_raw }}</span></div>
-    <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val">{{ summary.rrp_raw }}</span></div>
-    <div class="row"><span class="lbl">Net Liquidity</span><span class="val {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_raw }} &nbsp;({{ summary.nl_chg }})</span></div>
-    <hr class="divider">
-    <div class="row"><span class="lbl">NL 회귀 공정가치</span><span class="val">{{ summary.fv_nl }}</span></div>
-    <div class="row"><span class="lbl">SPX 현재가</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
-  </div>
-
-  <div class="section-title">최근 10 영업일 데이터</div>
-  <div class="tbl-wrap">
-    <table>
-      <thead><tr><th>날짜</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">괴리율</th></tr></thead>
-      <tbody>
-        {% for row in table_rows %}
-        <tr>
-          <td>{{ row.date }}</td><td>{{ row.walcl }}</td><td>{{ row.tga }}</td><td>{{ row.rrp }}</td>
-          <td><strong>{{ row.nl }}</strong></td>
-          <td>{% if row.dod_pos is none %}<span style="color:rgba(255,255,255,0.3);font-size:11px;">{{ row.dod }}</span>{% elif row.dod_pos %}<span class="badge-up">{{ row.dod }}</span>{% else %}<span class="badge-dn">{{ row.dod }}</span>{% endif %}</td>
-          <td>{{ row.spx }}</td><td>{{ row.fv_nl }}</td>
-          <td>{% if row.gap is not none %}<span class="{{ 'badge-dn' if row.gap_pos else 'badge-up' }}">{{ row.gap }}</span>{% else %}—{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
 
 {% endif %}
 </div>
