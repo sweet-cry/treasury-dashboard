@@ -20,11 +20,11 @@
     },
     {
       "path": "/api/cron/dts",
-      "schedule": "0 0 * * 1-5"
+      "schedule": "0 22 * * 1-5"
     },
     {
       "path": "/api/cron/qra",
-      "schedule": "0 0 * * 1-5"
+      "schedule": "0 22 * * 1-5"
     }
   ]
 }
