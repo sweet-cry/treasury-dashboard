@@ -1328,9 +1328,8 @@ HTML_TEMPLATE = """
             var border = isSel ? '1px solid rgba(96,165,250,0.6)' : hasData ? '1px solid rgba(96,165,250,0.2)' : '1px solid rgba(255,255,255,0.05)';
             var color = isSel ? '#60a5fa' : hasData ? 'rgba(255,255,255,0.7)' : isWE ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.25)';
             var cursor = hasData ? 'pointer' : 'default';
-            html += '<div onclick="dtsSelectDay(''+key+'')" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;font-size:11px;cursor:'+cursor+';background:'+bg+';border:'+border+';color:'+color+';">'
-              + d
-              + (hasData && !isSel ? '<div style="width:3px;height:3px;border-radius:50%;background:rgba(96,165,250,0.7);margin-top:1px;"></div>' : '')
+            html += '<div class="dts-cal-cell" style="background:'+bg+';border:'+border+';">'
+              + '<div class="dts-cal-cell-inner" style="cursor:'+cursor+';color:'+color+';" onclick="dtsSelectDay(\''+key+'\')">'+d+(hasData&&!isSel?'<span style="display:block;width:3px;height:3px;border-radius:50%;background:rgba(96,165,250,0.7);margin-top:2px;"></span>':'')+'</div>'
               + '</div>';
           }
           grid.innerHTML = html;
