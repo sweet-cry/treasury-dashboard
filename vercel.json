@@ -17,6 +17,14 @@
     {
       "path": "/api/cron/tic",
       "schedule": "0 2 18 * *"
+    },
+    {
+      "path": "/api/cron/dts",
+      "schedule": "0 0 * * 1-5"
+    },
+    {
+      "path": "/api/cron/qra",
+      "schedule": "0 0 * * 1-5"
     }
   ]
 }
