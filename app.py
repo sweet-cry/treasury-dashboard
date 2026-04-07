@@ -181,8 +181,8 @@ def build_nl_data():
         _r = _req.get(_url, params=_params, headers=_headers, timeout=10)
         _j = _r.json()["chart"]["result"][0]
         _ts = _pd.to_datetime(_j["timestamp"], unit="s").normalize()
-        _close = _j["indicators"]["quote"][0]["close"]
-        yf_spx = _pd.Series(_close, index=_ts, name="SP500")
+        _close = [x if x is not None else float("nan") for x in _j["indicators"]["quote"][0]["close"]]
+        yf_spx = _pd.Series(_close, index=_ts, name="SP500").dropna()
         missing = yf_spx.index.difference(spx_d.index)
         if len(missing) > 0:
             spx_d = _pd.concat([spx_d, yf_spx.loc[missing]]).sort_index()
