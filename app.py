@@ -1305,7 +1305,7 @@ HTML_TEMPLATE = """
       <!-- 발행 구성 바 -->
       <div class="dts-card" style="margin-bottom:10px;">
         <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>국채 발행 구성 (최근 30일 · 유동성 흡수)
-          <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned" target="_blank">TreasuryDirect ↗</a>
+          <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ↗</a>
         </div>
         {% for item in qra_data.breakdown %}
         <div class="qra-bar-row">
@@ -1345,7 +1345,7 @@ HTML_TEMPLATE = """
 
       <!-- 최근 경매 내역 -->
       <div class="section-title" style="margin-top:4px;">최근 경매 내역 (30일)
-        <a class="src-link" href="https://www.treasurydirect.gov/TA_WS/securities/auctioned?format=json&dateFieldName=auctionDate&startDate={{ qra_data.start_date }}" target="_blank">원본 ↗</a>
+        <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ↗</a>
       </div>
       <div class="tbl-wrap">
         <table>
