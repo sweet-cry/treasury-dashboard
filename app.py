@@ -16,7 +16,24 @@ Vercel + Neon(PostgreSQL) 버전
 
 import os
 import re
-import json
+import json as _json_orig
+import numpy as _np
+
+class _SafeEncoder(_json_orig.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, _np.bool_): return bool(obj)
+        if isinstance(obj, _np.integer): return int(obj)
+        if isinstance(obj, _np.floating): return float(obj)
+        return super().default(obj)
+
+class _PatchedJson:
+    def __getattr__(self, name): return getattr(_json_orig, name)
+    def dumps(self, obj, **kw):
+        kw.setdefault('cls', _SafeEncoder)
+        return _json_orig.dumps(obj, **kw)
+    def loads(self, s, **kw): return _json_orig.loads(s, **kw)
+
+json = _PatchedJson()
 import threading
 import requests as req
 import pandas as pd
@@ -85,6 +102,13 @@ def db_get(key):
         return None
 
 
+def _json_default(obj):
+    import numpy as np
+    if isinstance(obj, (np.bool_,)): return bool(obj)
+    if isinstance(obj, (np.integer,)): return int(obj)
+    if isinstance(obj, (np.floating,)): return float(obj)
+    raise TypeError(f"Not serializable: {type(obj)}")
+
 def db_set(key, value):
     try:
         with get_conn() as conn:
@@ -95,7 +119,7 @@ def db_set(key, value):
                     ON CONFLICT (key) DO UPDATE
                       SET value = EXCLUDED.value,
                           updated_at = NOW()
-                """, (key, json.dumps(value)))
+                """, (key, json.dumps(value, default=_json_default)))
             conn.commit()
     except Exception as e:
         print(f"[DB SET ERROR] {key}: {e}")
