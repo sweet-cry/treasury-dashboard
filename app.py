@@ -102,6 +102,17 @@ def db_get(key):
         return None
 
 
+def _sanitize(obj):
+    """numpy 타입 및 NaN을 Python 기본 타입으로 변환 (재귀)"""
+    if isinstance(obj, dict):  return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):  return [_sanitize(v) for v in obj]
+    if isinstance(obj, _np.bool_):    return bool(obj)
+    if isinstance(obj, _np.integer):  return int(obj)
+    if isinstance(obj, _np.floating): return float(obj)
+    if isinstance(obj, float) and (obj != obj): return None  # NaN
+    return obj
+
+
 def db_set(key, value):
     try:
         with get_conn() as conn:
@@ -112,7 +123,7 @@ def db_set(key, value):
                     ON CONFLICT (key) DO UPDATE
                       SET value = EXCLUDED.value,
                           updated_at = NOW()
-                """, (key, _json_orig.dumps(value, cls=_SafeEncoder)))
+                """, (key, _json_orig.dumps(_sanitize(value), cls=_SafeEncoder)))
             conn.commit()
     except Exception as e:
         print(f"[DB SET ERROR] {key}: {e}")
@@ -271,16 +282,6 @@ def build_nl_data():
     return df, model_info
 
 
-def _sanitize(obj):
-    """numpy 타입을 Python 기본 타입으로 변환"""
-    import numpy as np
-    if isinstance(obj, dict): return {k: _sanitize(v) for k, v in obj.items()}
-    if isinstance(obj, list): return [_sanitize(v) for v in obj]
-    if isinstance(obj, np.bool_): return bool(obj)
-    if isinstance(obj, np.integer): return int(obj)
-    if isinstance(obj, np.floating): return float(obj)
-    if isinstance(obj, float) and (obj != obj): return None  # NaN
-    return obj
 
 def build_nl_summary(df):
     latest = df.iloc[-1]
