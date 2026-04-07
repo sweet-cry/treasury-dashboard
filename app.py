@@ -805,12 +805,19 @@ def run_refresh_tic():
 def run_refresh_dts():
     try:
         dep, wit, bal, date = fetch_dts_data()
+        # 최신 단일 키 (하위호환)
         db_set("dts_deposits",    dep)
         db_set("dts_withdrawals", wit)
         db_set("dts_balance",     bal)
         db_set("dts_date",        date)
-        db_set("dts_error",       None)
-        print(f"DTS 갱신 완료: {date}")
+        # 한달치 history 누적 (최대 23영업일)
+        history = db_get("dts_history") or []
+        history = [h for h in history if h["date"] != date]  # 중복 제거
+        history.insert(0, {"date": date, "deposits": dep, "withdrawals": wit, "balance": bal})
+        history = history[:23]
+        db_set("dts_history", history)
+        db_set("dts_error",   None)
+        print(f"DTS 갱신 완료: {date} (history {len(history)}일)")
     except Exception as e:
         db_set("dts_error", str(e))
         print(f"DTS 오류: {e}")
@@ -851,6 +858,7 @@ def index():
     dts_balance     = db_get("dts_balance") or []
     dts_date        = db_get("dts_date") or "—"
     dts_error       = db_get("dts_error")
+    dts_history     = db_get("dts_history") or []
 
     qra_data  = db_get("qra_data")
     qra_error = db_get("qra_error")
@@ -868,6 +876,7 @@ def index():
         dts_deposits=dts_deposits, dts_withdrawals=dts_withdrawals,
         dts_balance=dts_balance, dts_date=dts_date, dts_error=dts_error,
         qra_data=qra_data, qra_error=qra_error,
+        dts_history=dts_history,
     )
 
 
@@ -1257,44 +1266,96 @@ HTML_TEMPLATE = """
     <div class="itab-panel active" id="dts-qra-tabs-panel-dts">
       {% if dts_error %}
       <div class="error" style="font-size:12px;">DTS 데이터 오류: {{ dts_error }}</div>
-      {% elif not dts_deposits %}
+      {% elif not dts_history and not dts_deposits %}
       <div class="loading" style="padding:20px;">DTS 데이터 로딩 중...</div>
       {% else %}
-      <div class="dts-grid">
-        <div class="dts-card">
-          <div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 항목 (Table II)
-            <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
-          </div>
-          {% for item in dts_deposits %}
-          <div class="dts-row">
-            <span class="dts-name">{{ item.name }}</span>
-            <span class="dts-amt c-in">+{{ item.amt }}</span>
-          </div>
-          {% endfor %}
-        </div>
-        <div class="dts-card">
-          <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 항목 (Table II)
-            <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/deposits-withdrawals-operating-cash" target="_blank">↗</a>
-          </div>
-          {% for item in dts_withdrawals %}
-          <div class="dts-row">
-            <span class="dts-name">{{ item.name }}</span>
-            <span class="dts-amt c-out">-{{ item.amt }}</span>
-          </div>
-          {% endfor %}
+
+      <!-- 캘린더 -->
+      <div style="margin-bottom:10px;">
+        <div id="dts-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px;"></div>
+        <div style="display:flex;gap:10px;font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(96,165,250,0.25);margin-right:3px;"></span>데이터 있음</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,0.04);margin-right:3px;"></span>데이터 없음</span>
         </div>
       </div>
-      <div class="dts-card" style="margin-bottom:12px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 당일 순변동 요약
-          <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/operating-cash-balance" target="_blank">↗</a>
-        </div>
-        {% for item in dts_balance %}
-        <div class="dts-row">
-          <span class="dts-name">{{ item.name }}</span>
-          <span class="dts-amt" style="color:{{ '#34d399' if item.pos else '#f87171' }};">{{ item.amt }}</span>
-        </div>
-        {% endfor %}
-      </div>
+
+      <!-- 선택일 상세 -->
+      <div id="dts-detail"></div>
+
+      <script>
+      (function(){
+        var history = {{ dts_history | tojson }};
+        var dataMap = {};
+        history.forEach(function(h){ dataMap[h.date] = h; });
+
+        var selected = history.length > 0 ? history[0].date : null;
+
+        function renderCal(){
+          var grid = document.getElementById('dts-cal-grid');
+          if(!grid) return;
+          var dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+          var html = dows.map(function(d){
+            return '<div style="font-size:10px;color:rgba(255,255,255,0.25);text-align:center;padding:3px 0;">'+d+'</div>';
+          }).join('');
+
+          // 이번달 기준 (최신 날짜 기준)
+          var baseDate = selected ? new Date(selected+'T00:00:00') : new Date();
+          var yr = baseDate.getFullYear(), mo = baseDate.getMonth();
+          var firstDow = new Date(yr, mo, 1).getDay();
+          var daysInMonth = new Date(yr, mo+1, 0).getDate();
+
+          for(var i=0;i<firstDow;i++) html += '<div></div>';
+          for(var d=1;d<=daysInMonth;d++){
+            var key = yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+            var dow = new Date(yr,mo,d).getDay();
+            var isWE = dow===0||dow===6;
+            var hasData = !!dataMap[key];
+            var isSel = key===selected;
+            var bg = isSel ? 'rgba(96,165,250,0.3)' : hasData ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.03)';
+            var border = isSel ? '1px solid rgba(96,165,250,0.6)' : hasData ? '1px solid rgba(96,165,250,0.2)' : '1px solid rgba(255,255,255,0.05)';
+            var color = isSel ? '#60a5fa' : hasData ? 'rgba(255,255,255,0.7)' : isWE ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.25)';
+            var cursor = hasData ? 'pointer' : 'default';
+            html += '<div onclick="dtsSelectDay(''+key+'')" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:4px;font-size:11px;cursor:'+cursor+';background:'+bg+';border:'+border+';color:'+color+';">'
+              + d
+              + (hasData && !isSel ? '<div style="width:3px;height:3px;border-radius:50%;background:rgba(96,165,250,0.7);margin-top:1px;"></div>' : '')
+              + '</div>';
+          }
+          grid.innerHTML = html;
+        }
+
+        window.dtsSelectDay = function(key){
+          if(!dataMap[key]) return;
+          selected = key;
+          renderCal();
+          renderDetail();
+        };
+
+        function renderDetail(){
+          var el = document.getElementById('dts-detail');
+          if(!el) return;
+          if(!selected || !dataMap[selected]){ el.innerHTML=''; return; }
+          var d = dataMap[selected];
+          var depRows = (d.deposits||[]).map(function(r){
+            return '<div class="dts-row"><span class="dts-name">'+r.name+'</span><span class="dts-amt c-in">+'+r.amt+'</span></div>';
+          }).join('');
+          var witRows = (d.withdrawals||[]).map(function(r){
+            return '<div class="dts-row"><span class="dts-name">'+r.name+'</span><span class="dts-amt c-out">-'+r.amt+'</span></div>';
+          }).join('');
+          var balRows = (d.balance||[]).map(function(r){
+            var col = r.pos ? '#34d399' : '#f87171';
+            return '<div class="dts-row"><span class="dts-name">'+r.name+'</span><span class="dts-amt" style="color:'+col+';">'+r.amt+'</span></div>';
+          }).join('');
+          el.innerHTML = '<div class="dts-grid">'
+            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 ('+d.date+')</div>'+depRows+'</div>'
+            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 ('+d.date+')</div>'+witRows+'</div>'
+            + '</div>'
+            + '<div class="dts-card" style="margin-bottom:12px;"><div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 당일 순변동 요약</div>'+balRows+'</div>';
+        }
+
+        renderCal();
+        renderDetail();
+      })();
+      </script>
       {% endif %}
     </div>
 
