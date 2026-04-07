@@ -772,7 +772,7 @@ def cron_nl():
 
 @app.route("/api/debug")
 def debug_info():
-    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error")})
+    return jsonify({"yf_error": db_get("yf_error"), "nl_error": db_get("nl_error"), "nl_updated_at": db_get_updated_at("nl_summary"), "nl_summary_exists": db_get("nl_summary") is not None})
 
 @app.route("/api/cron/tic")
 def cron_tic():
