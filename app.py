@@ -175,7 +175,8 @@ def build_nl_data():
     # yfinance fallback
     try:
         import yfinance as yf
-        yf_spx = yf.download("^GSPC", start=START_DATE, progress=False, auto_adjust=True)["Close"]
+        _yf_raw = yf.download("^GSPC", start=START_DATE, progress=False, auto_adjust=True)
+        yf_spx = _yf_raw["Close"].squeeze()
         yf_spx.index = __import__("pandas").to_datetime(yf_spx.index).tz_localize(None)
         yf_spx.name = "SP500"
         missing = yf_spx.index.difference(spx_d.index)
