@@ -585,9 +585,13 @@ def fetch_dts_data():
     url_t2 = (
         f"{base}/accounting/dts/deposits_withdrawals_operating_cash"
         f"?fields=record_date,transaction_catg,transaction_type,transaction_today_amt"
-        f"&sort=-record_date&page[size]=300"
+        f"&sort=-record_date&limit=300"
     )
-    r2 = req.get(url_t2, timeout=30)
+    _dts_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
+    r2 = req.get(url_t2, headers=_dts_headers, timeout=30)
     r2.raise_for_status()
     data2 = r2.json().get("data", [])
     if not data2:
