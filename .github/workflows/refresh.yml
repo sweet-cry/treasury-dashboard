@@ -1,0 +1,20 @@
+name: 데이터 갱신
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 매일 오전 2시 (UTC)
+  workflow_dispatch:      # 수동 실행 버튼
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: DTS 데이터 갱신
+        run: |
+          curl -X POST "${{ secrets.VERCEL_APP_URL }}/api/cron/dts" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: QRA 데이터 갱신
+        run: |
+          curl -X POST "${{ secrets.VERCEL_APP_URL }}/api/cron/qra" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
