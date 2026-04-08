@@ -11,10 +11,10 @@ jobs:
     steps:
       - name: DTS 데이터 갱신
         run: |
-          curl -X POST "${{ secrets.VERCEL_APP_URL }}/api/cron/dts" \
+          curl -X GET "${{ secrets.VERCEL_APP_URL }}/api/cron/dts" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: QRA 데이터 갱신
         run: |
-          curl -X POST "${{ secrets.VERCEL_APP_URL }}/api/cron/qra" \
+          curl -X GET "${{ secrets.VERCEL_APP_URL }}/api/cron/qra" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
