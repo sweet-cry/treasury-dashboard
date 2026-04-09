@@ -1,17 +1,17 @@
-﻿"""
-Net Liquidity + 援??蹂?誘멸뎅梨?蹂댁쑀 Dashboard
+"""
+Net Liquidity + 국가별 미국채 보유 Dashboard
 =============================================
-Vercel + Neon(PostgreSQL) 踰꾩쟾
+Vercel + Neon(PostgreSQL) 버전
 
-?섍꼍蹂??
+환경변수:
   FRED_API_KEY  : FRED API Key
-  DATABASE_URL  : Neon PostgreSQL ?곌껐 臾몄옄??
-  START_DATE    : ?쒖옉??(湲곕낯 2000-01-01)
-  CRON_SECRET   : Cron ?붾뱶?ъ씤??蹂댄샇???쒗겕由???
+  DATABASE_URL  : Neon PostgreSQL 연결 문자열
+  START_DATE    : 시작일 (기본 2000-01-01)
+  CRON_SECRET   : Cron 엔드포인트 보호용 시크릿 키
 
-?낅뜲?댄듃 ?ㅼ?以?(vercel.json cron):
-  - NL/DTS/QRA : 留ㅼ씪 00:30 UTC
-  - TIC        : 留ㅼ썡 18??02:00 UTC
+업데이트 스케줄 (vercel.json cron):
+  - NL/DTS/QRA : 매일 00:30 UTC
+  - TIC        : 매월 18일 02:00 UTC
 """
 
 import os
@@ -68,16 +68,16 @@ FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 app = Flask(__name__)
 
 
-# ??????????????????????????????????????????????
-# Neon DB ?좏떥
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# Neon DB 유틸
+# ──────────────────────────────────────────────
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
 def init_db():
-    """罹먯떆 ?뚯씠釉?珥덇린??(理쒖큹 1??"""
+    """캐시 테이블 초기화 (최초 1회)"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -103,7 +103,7 @@ def db_get(key):
 
 
 def _sanitize(obj):
-    """numpy ???諛?NaN??Python 湲곕낯 ??낆쑝濡?蹂??(?ш?)"""
+    """numpy 타입 및 NaN을 Python 기본 타입으로 변환 (재귀)"""
     if isinstance(obj, dict):  return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, list):  return [_sanitize(v) for v in obj]
     if isinstance(obj, _np.bool_):    return bool(obj)
@@ -143,13 +143,13 @@ def db_get_updated_at(key):
         return None
 
 
-# ??????????????????????????????????????????????
-# FRED ?곗씠??fetch
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# FRED 데이터 fetch
+# ──────────────────────────────────────────────
 
 def fetch_series(series_id, start, frequency="d"):
     if not API_KEY:
-        raise ValueError("FRED_API_KEY ?섍꼍蹂?섍? ?ㅼ젙?섏? ?딆븯?듬땲??")
+        raise ValueError("FRED_API_KEY 환경변수가 설정되지 않았습니다.")
     params = dict(series_id=series_id, api_key=API_KEY, file_type="json",
                   observation_start=start, frequency=frequency)
     r = req.get(FRED_BASE, params=params, timeout=30)
@@ -159,7 +159,7 @@ def fetch_series(series_id, start, frequency="d"):
         raise ValueError(f"{series_id}: {data['error_message']}")
     obs = [(o["date"], float(o["value"])) for o in data["observations"] if o["value"] != "."]
     if not obs:
-        raise ValueError(f"{series_id}: ?곗씠???놁쓬")
+        raise ValueError(f"{series_id}: 데이터 없음")
     s = pd.Series(dict(obs), name=series_id)
     s.index = pd.to_datetime(s.index)
     return s
@@ -173,20 +173,20 @@ def fetch_auto(series_id, start, preferred="d"):
                 return s, freq
         except Exception:
             continue
-    raise ValueError(f"{series_id}: ?ъ슜 媛?ν븳 frequency ?놁쓬")
+    raise ValueError(f"{series_id}: 사용 가능한 frequency 없음")
 
 
-# ??????????????????????????????????????????????
-# NL 怨꾩궛
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# NL 계산
+# ──────────────────────────────────────────────
 
 def fmt_val(v):
     try:
         v = float(v)
     except (TypeError, ValueError):
-        return "??
+        return "—"
     if v != v:
-        return "??
+        return "—"
     if abs(v) >= 1_000:
         return f"{v/1_000:.2f}T"
     return f"{v:,.0f}B"
@@ -194,7 +194,7 @@ def fmt_val(v):
 
 
 def build_nl_data_fast():
-    """理쒓렐 90???곗씠?곕쭔 媛?몄삤??寃쎈웾 踰꾩쟾 (Vercel ??꾩븘?????"""
+    """최근 90일 데이터만 가져오는 경량 버전 (Vercel 타임아웃 대응)"""
     import datetime as _dt
     fast_start = (_dt.date.today() - _dt.timedelta(days=90)).strftime("%Y-%m-%d")
     walcl_w = fetch_series("WALCL", fast_start, frequency="w")
@@ -225,11 +225,11 @@ def build_nl_data_fast():
     df = pd.DataFrame({"RRP": rrp_d}).sort_index()
     df["TGA"]   = tga_d.reindex(df.index, method="ffill")
     df["WALCL"] = walcl_w.reindex(df.index, method="ffill")
-    df["SP500"] = spx_d.reindex(df.index, method="ffill").ffill().bfill()
+    df["SP500"] = spx_d.reindex(df.index, method="ffill")
     df = df.dropna(subset=["RRP", "WALCL", "TGA"])
     df["NL"] = df["WALCL"] - df["TGA"] - df["RRP"]
     df["NL_DoD"] = df["NL"].diff()
-    # ?뚭????꾩껜 ?곗씠???놁씠 ?⑥닚 異붿젙 ?앸왂 (FV_NL = None)
+    # 회귀는 전체 데이터 없이 단순 추정 생략 (FV_NL = None)
     df["FV_NL"] = np.nan
     return df, None
 
@@ -262,7 +262,7 @@ def build_nl_data():
     df = pd.DataFrame({"RRP": rrp_d}).sort_index()
     df["TGA"]   = tga_d.reindex(df.index, method="ffill")
     df["WALCL"] = walcl_w.reindex(df.index, method="ffill")
-    df["SP500"] = spx_d.reindex(df.index, method="ffill").ffill().bfill()
+    df["SP500"] = spx_d.reindex(df.index, method="ffill")
     df = df.dropna(subset=["RRP", "WALCL", "TGA"])
     df["NL"] = df["WALCL"] - df["TGA"] - df["RRP"]
     df["NL_DoD"] = df["NL"].diff()
@@ -300,32 +300,32 @@ def build_nl_summary(df):
     walcl_chg  = float(latest["WALCL"]) - prev_walcl if prev_walcl is not None else 0
     tga_chg    = float(latest["TGA"])   - prev_tga   if prev_tga   is not None else 0
     rrp_chg    = float(latest["RRP"])   - prev_rrp   if prev_rrp   is not None else 0
-    walcl_pos  = bool(walcl_chg >= 0)   # WALCL???좎엯=green
-    tga_pos    = bool(tga_chg   <= 0)   # TGA???좎엯=green
-    rrp_pos    = bool(rrp_chg   <= 0)   # RRP???좎엯=green
+    walcl_pos  = bool(walcl_chg >= 0)   # WALCL↑=유입=green
+    tga_pos    = bool(tga_chg   <= 0)   # TGA↓=유입=green
+    rrp_pos    = bool(rrp_chg   <= 0)   # RRP↓=유입=green
 
     fv_nl_gap = fv_nl_cheap = None
     if fv_nl is not None and spx is not None and fv_nl != 0:
         gap = (spx - fv_nl) / fv_nl * 100
-        fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'怨좏룊媛' if gap>0 else '??됯?'}"
+        fv_nl_gap = f"{'+' if gap>0 else ''}{gap:.1f}% {'고평가' if gap>0 else '저평가'}"
         fv_nl_cheap = bool(gap < 0)
 
     return _sanitize({
         "base_date": df.index[-1].strftime("%Y-%m-%d"),
         "nl": fmt_val(latest["NL"]), "nl_raw": f"{latest['NL']:,.0f}B",
-        "nl_chg": f"{'?? if chg>=0 else '??} {fmt_val(abs(chg))} DoD", "nl_chg_pos": bool(chg >= 0),
+        "nl_chg": f"{'▲' if chg>=0 else '▼'} {fmt_val(abs(chg))} DoD", "nl_chg_pos": bool(chg >= 0),
         "walcl": fmt_val(latest["WALCL"]), "walcl_raw": f"{latest['WALCL']:,.0f}B",
-        "walcl_date": walcl_date.strftime("%m-%d") if walcl_date else "??,
+        "walcl_date": walcl_date.strftime("%m-%d") if walcl_date else "—",
         "walcl_pos": walcl_pos,
         "tga": fmt_val(latest["TGA"]), "tga_raw": f"{latest['TGA']:,.0f}B",
-        "tga_date": tga_date.strftime("%m-%d") if tga_date else "??,
+        "tga_date": tga_date.strftime("%m-%d") if tga_date else "—",
         "tga_pos": tga_pos,
         "rrp": fmt_val(latest["RRP"]), "rrp_raw": f"{latest['RRP']:,.0f}B",
-        "rrp_date": rrp_date.strftime("%m-%d") if rrp_date else "??,
+        "rrp_date": rrp_date.strftime("%m-%d") if rrp_date else "—",
         "rrp_pos": rrp_pos,
-        "spx_raw": f"{spx:,.0f}" if spx else "??,
-        "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "??,
-        "fv_nl_gap": fv_nl_gap or "?곗씠??遺議?, "fv_nl_cheap": fv_nl_cheap,
+        "spx_raw": f"{spx:,.0f}" if spx else "—",
+        "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
+        "fv_nl_gap": fv_nl_gap or "데이터 부족", "fv_nl_cheap": fv_nl_cheap,
     })
 
 
@@ -346,10 +346,10 @@ def build_nl_table(df):
             "date": date.strftime("%Y-%m-%d"),
             "walcl": f"{row['WALCL']:,.0f}", "tga": f"{row['TGA']:,.0f}", "rrp": f"{row['RRP']:,.0f}",
             "nl": f"{row['NL']:,.0f}",
-            "dod": f"{'?? if dod>0 else ('?? if dod<0 else '?')}{abs(round(dod)):,.0f}" if dod is not None else "??,
+            "dod": f"{'▲' if dod>0 else ('▼' if dod<0 else '─')}{abs(round(dod)):,.0f}" if dod is not None else "—",
             "dod_pos": None if dod is None or round(dod)==0 else bool(dod > 0),
-            "spx": f"{spx:,.0f}" if spx else "??,
-            "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "??,
+            "spx": f"{spx:,.0f}" if spx else "—",
+            "fv_nl": f"{fv_nl:,.0f}" if fv_nl else "—",
             "gap": gap, "gap_pos": bool(gap_pos) if gap_pos is not None else None,
         })
     return _sanitize(list(reversed(rows[-30:])))
@@ -385,12 +385,12 @@ def build_chart1(df):
 def build_chart2(df):
     recession_periods = [("2001-03-01","2001-11-01"),("2007-12-01","2009-06-01"),("2020-02-01","2020-04-01")]
     fiscal_events = [
-        {"month": 2, "label": "?섍툒 ?쇳겕", "color": "rgba(52,211,153,0.5)"},
-        {"month": 3, "label": "?섍툒 ?쇳겕", "color": "rgba(52,211,153,0.5)"},
+        {"month": 2, "label": "환급 피크", "color": "rgba(52,211,153,0.5)"},
+        {"month": 3, "label": "환급 피크", "color": "rgba(52,211,153,0.5)"},
         {"month": 4, "label": "Tax Day",   "color": "rgba(248,113,113,0.6)"},
-        {"month": 6, "label": "2Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
-        {"month": 9, "label": "3Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
-        {"month": 1, "label": "4Q 異붿젙??, "color": "rgba(251,191,36,0.5)"},
+        {"month": 6, "label": "2Q 추정세", "color": "rgba(251,191,36,0.5)"},
+        {"month": 9, "label": "3Q 추정세", "color": "rgba(251,191,36,0.5)"},
+        {"month": 1, "label": "4Q 추정세", "color": "rgba(251,191,36,0.5)"},
     ]
     fig = go.Figure()
     for s, e in recession_periods:
@@ -410,7 +410,7 @@ def build_chart2(df):
         name="S&P 500", line=dict(color="#e2e2e2", width=2)))
     if "FV_NL" in df.columns and df["FV_NL"].notna().any():
         fig.add_trace(go.Scatter(x=df.index.strftime("%Y-%m-%d").tolist(), y=df["FV_NL"].tolist(),
-            name="NL ?뚭? FV", line=dict(color="#60a5fa", width=1.5, dash="dot")))
+            name="NL 회귀 FV", line=dict(color="#60a5fa", width=1.5, dash="dot")))
     spx_vals = df["SP500"].dropna()
     spx_min = int(spx_vals.min() * 0.9) if len(spx_vals) else 500
     spx_max = int(spx_vals.max() * 1.05) if len(spx_vals) else 7500
@@ -427,9 +427,9 @@ def build_chart2(df):
     return fig.to_html(include_plotlyjs=False, full_html=False, config={"displayModeBar": False})
 
 
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 # TIC
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 
 def _parse_hist(text):
     records = []
@@ -507,7 +507,7 @@ def fetch_tic_data():
     r_curr.raise_for_status()
     records = _parse_hist(r_hist.text) + _parse_curr(r_curr.text)
     if not records:
-        raise ValueError("TIC ?곗씠???뚯떛 ?ㅽ뙣")
+        raise ValueError("TIC 데이터 파싱 실패")
     df = pd.DataFrame(records)
     df = df.sort_values("date").drop_duplicates(subset=["date", "country"], keep="last")
     pivot = df.pivot(index="date", columns="country", values="value").sort_index()
@@ -556,22 +556,22 @@ def build_tic_table(pivot):
             "rank": i+1, "name": country,
             "color": TIC_COLORS.get(country, "#888"),
             "val": f"{val:,.1f}",
-            "chg": f"{'+' if chg and chg>=0 else ''}{chg:.1f}" if chg is not None else "??,
+            "chg": f"{'+' if chg and chg>=0 else ''}{chg:.1f}" if chg is not None else "—",
             "chg_pos": chg >= 0 if chg is not None else True,
             "pct": f"{pct:.1f}", "bar_pct": bar_pct,
         })
     return rows[:15]
 
 
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 # DTS
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 
 def fmt_mil(v):
     try:
         v = float(str(v).replace(",", ""))
     except Exception:
-        return "??
+        return "—"
     if abs(v) >= 1_000_000:
         return f"{v/1_000_000:.2f}T"
     if abs(v) >= 1_000:
@@ -595,7 +595,7 @@ def fetch_dts_data():
     r2.raise_for_status()
     data2 = r2.json().get("data", [])
     if not data2:
-        raise ValueError("DTS Table II ?곗씠???놁쓬")
+        raise ValueError("DTS Table II 데이터 없음")
 
     latest_date = data2[0]["record_date"]
     day_data = [d for d in data2 if d["record_date"] == latest_date]
@@ -626,23 +626,23 @@ def fetch_dts_data():
     total_wit = sum(withdrawals.values())
     net = total_dep - total_wit
     balance_list = [
-        {"name": "珥??낃툑 (Total Deposits)",    "amt": fmt_mil(total_dep), "pos": True},
-        {"name": "珥?異쒓툑 (Total Withdrawals)", "amt": fmt_mil(total_wit), "pos": False},
-        {"name": f"?뱀씪 ?쒕???({'?좎엯' if net>=0 else '?좎텧'})", "amt": fmt_mil(abs(net)), "pos": net >= 0},
+        {"name": "총 입금 (Total Deposits)",    "amt": fmt_mil(total_dep), "pos": True},
+        {"name": "총 출금 (Total Withdrawals)", "amt": fmt_mil(total_wit), "pos": False},
+        {"name": f"당일 순변동 ({'유입' if net>=0 else '유출'})", "amt": fmt_mil(abs(net)), "pos": net >= 0},
     ]
     return dep_list, wit_list, balance_list, latest_date
 
 
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 # QRA
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
 
 TIP_INFO = {
-    "Bill": {"title": "Treasury Bill", "body": "留뚭린 1???댄븯 ?④린 援?콈. MMF媛 二쇱슂 留ㅼ닔????T-Bill 諛쒗뻾????RRP???곸뇙 ??NL 異⑷꺽 ?쒗븳.", "liq": "NL ?곹뼢 ?쒗븳 (RRP ?곸뇙)", "neg": False},
-    "Note": {"title": "Treasury Note (2~10Y)", "body": "以묎린 援?콈. ??됀룹뿰湲곌툑 留ㅼ닔 ??以鍮꾧툑 吏곸젒 ?≪닔 ??NL ?섎씫 ?뺣젰.", "liq": "???以鍮꾧툑 ?≪닔 ??NL??, "neg": True},
-    "Bond": {"title": "Treasury Bond (20~30Y)", "body": "?κ린 援?콈. ??덉씠???믪븘 ?κ린 湲덈━ 誘쇨컧.", "liq": "?κ린湲덈━ 寃쎈줈濡?媛꾩젒 NL ?뺣컯", "neg": True},
-    "TIPS": {"title": "TIPS (臾쇨??곕룞)", "body": "?먭툑??CPI???곕룞. ?ㅼ쭏湲덈━ 吏??", "liq": "?ㅼ쭏湲덈━ 吏????吏곸젒 ?④낵 ?쒗븳??, "neg": False},
-    "FRN":  {"title": "FRN (蹂?숆툑由ъ콈)", "body": "13二?T-Bill 湲덈━???곕룞. ?④린臾쇱뿉 媛源뚯슫 ?좊룞???뱀꽦.", "liq": "?④린臾??좎궗 ??NL ?곹뼢 ?쒗븳??, "neg": False},
+    "Bill": {"title": "Treasury Bill", "body": "만기 1년 이하 단기 국채. MMF가 주요 매수자 — T-Bill 발행↑ → RRP↓ 상쇄 → NL 충격 제한.", "liq": "NL 영향 제한 (RRP 상쇄)", "neg": False},
+    "Note": {"title": "Treasury Note (2~10Y)", "body": "중기 국채. 은행·연기금 매수 시 준비금 직접 흡수 → NL 하락 압력.", "liq": "은행 준비금 흡수 → NL↓", "neg": True},
+    "Bond": {"title": "Treasury Bond (20~30Y)", "body": "장기 국채. 듀레이션 높아 장기 금리 민감.", "liq": "장기금리 경로로 간접 NL 압박", "neg": True},
+    "TIPS": {"title": "TIPS (물가연동)", "body": "원금이 CPI에 연동. 실질금리 지표.", "liq": "실질금리 지표 — 직접 효과 제한적", "neg": False},
+    "FRN":  {"title": "FRN (변동금리채)", "body": "13주 T-Bill 금리에 연동. 단기물에 가까운 유동성 특성.", "liq": "단기물 유사 — NL 영향 제한적", "neg": False},
 }
 
 
@@ -658,7 +658,7 @@ def fetch_qra_data():
     r.raise_for_status()
     raw = r.json()
     if not raw:
-        raise ValueError("QRA 寃쎈ℓ ?곗씠???놁쓬")
+        raise ValueError("QRA 경매 데이터 없음")
 
     TYPE_MAP = {
         "Bill": {"label": "T-Bill", "bg": "rgba(248,113,113,0.12)", "color": "#f87171"},
@@ -688,7 +688,7 @@ def fetch_qra_data():
         try:
             rate = f"{float(rate_raw):.3f}%"
         except Exception:
-            rate = "??
+            rate = "—"
 
         total += amt
         if stype == "Bill":   tbill += amt
@@ -702,7 +702,7 @@ def fetch_qra_data():
         ti = TIP_INFO.get(stype, TIP_INFO["Note"])
         auctions.append({
             "date": date, "stype": tm["label"], "term": term,
-            "amt": f"{amt:.1f}", "btc": f"{btc:.2f}x" if btc > 0 else "??,
+            "amt": f"{amt:.1f}", "btc": f"{btc:.2f}x" if btc > 0 else "—",
             "btc_ok": btc >= 2.3, "rate": rate,
             "type_bg": tm["bg"], "type_color": tm["color"],
             "tip_title": ti["title"], "tip_body": ti["body"],
@@ -721,7 +721,7 @@ def fetch_qra_data():
         {"label": "Bonds(10~30Y)","amt": f"${bond:.0f}B",  "pct": pct(bond),  "color": "#fbbf24"},
         {"label": "TIPS",         "amt": f"${tips:.0f}B",  "pct": pct(tips),  "color": "#a78bfa"},
     ]
-    # QRA ?쇱젙 ?먮룞怨꾩궛: 留ㅻ뀈 1/4/7/10??留덉?留??붿슂??
+    # QRA 일정 자동계산: 매년 1/4/7/10월 마지막 월요일
     def _qra_dates(year):
         import calendar
         results = []
@@ -743,7 +743,7 @@ def fetch_qra_data():
         if is_current:
             next_qra_date = d.strftime("%Y-%m-%d")
         schedule.append({
-            "label": f"{q_labels[i]}: {d.strftime('%Y-%m-%d')} {'?꾨즺' if is_past else '?덉젙'}",
+            "label": f"{q_labels[i]}: {d.strftime('%Y-%m-%d')} {'완료' if is_past else '예정'}",
             "current": is_current,
         })
     schedule = schedule[:4]
@@ -755,15 +755,15 @@ def fetch_qra_data():
         "next_qra": next_qra_date,
         "tbill_30d": fmt_b(tbill), "coupon_30d": fmt_b(note + bond),
         "tips_30d": fmt_b(tips), "total_30d": fmt_b(total),
-        "avg_btc": f"{avg_btc:.2f}x" if avg_btc else "??,
+        "avg_btc": f"{avg_btc:.2f}x" if avg_btc else "—",
         "breakdown": breakdown, "schedule": schedule, "auctions": auctions,
         "start_date": start,
     }
 
 
-# ??????????????????????????????????????????????
-# Cron 媛깆떊 ?⑥닔 (Neon?????
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# Cron 갱신 함수 (Neon에 저장)
+# ──────────────────────────────────────────────
 
 def next_thursday_kst():
     now = datetime.now(KST)
@@ -774,23 +774,23 @@ def next_thursday_kst():
 
 
 def run_refresh_nl():
-    """NL ?꾩껜 媛깆떊: summary + table + chart1/2 + model_info"""
+    """NL 전체 갱신: summary + table + chart1/2 + model_info"""
     try:
-        # 李⑦듃/?뚭????꾩껜 ?곗씠??2000~) ?꾩슂 ??build_nl_data ?ъ슜
+        # 차트/회귀는 전체 데이터(2000~) 필요 → build_nl_data 사용
         df_full, model_info = build_nl_data()
         db_set("nl_chart1",    build_chart1(df_full))
         db_set("nl_chart2",    build_chart2(df_full))
         db_set("nl_model",     model_info)
-        # summary/table? 理쒖떊 90?쇰줈 異⑸텇 ??fast 踰꾩쟾?쇰줈 ??뼱?곌린
+        # summary/table은 최신 90일로 충분 → fast 버전으로 덮어쓰기
         df_fast, _ = build_nl_data_fast()
         db_set("nl_summary",   build_nl_summary(df_fast))
         db_set("nl_table",     build_nl_table(df_fast))
         db_set("nl_next_h41",  next_thursday_kst())
         db_set("nl_error",     None)
-        print("NL 媛깆떊 ?꾨즺 (full + fast)")
+        print("NL 갱신 완료 (full + fast)")
     except Exception as e:
         db_set("nl_error", str(e))
-        print(f"NL ?ㅻ쪟: {e}")
+        print(f"NL 오류: {e}")
 
 
 def run_refresh_tic():
@@ -800,14 +800,14 @@ def run_refresh_tic():
         db_set("tic_table",      build_tic_table(pivot))
         db_set("tic_updated_at", pivot.index[-1].strftime("%Y-%m"))
         db_set("tic_error",      None)
-        print("TIC 媛깆떊 ?꾨즺")
+        print("TIC 갱신 완료")
     except Exception as e:
         db_set("tic_error", str(e))
-        print(f"TIC ?ㅻ쪟: {e}")
+        print(f"TIC 오류: {e}")
 
 
 def _build_monthly_summary(history):
-    """history 由ъ뒪?몄뿉???붾퀎 ?쒕㉧由?怨꾩궛 (balance 湲곗?)"""
+    """history 리스트에서 월별 서머리 계산 (balance 기준)"""
     from collections import defaultdict
     monthly = defaultdict(lambda: {"total_dep_raw": 0.0, "total_wit_raw": 0.0, "days": 0})
     for h in history:
@@ -821,9 +821,9 @@ def _build_monthly_summary(history):
                 amt = float(amt_str)
             except Exception:
                 amt = 0.0
-            if "?낃툑" in name or "Deposit" in name:
+            if "입금" in name or "Deposit" in name:
                 dep_raw += amt
-            elif "異쒓툑" in name or "Withdrawal" in name:
+            elif "출금" in name or "Withdrawal" in name:
                 wit_raw += amt
         monthly[month]["total_dep_raw"] += dep_raw
         monthly[month]["total_wit_raw"] += wit_raw
@@ -840,46 +840,46 @@ def _build_monthly_summary(history):
             "total_wit": f"{v['total_wit_raw']/1000:.1f}B" if v['total_wit_raw'] >= 1000 else f"{v['total_wit_raw']:.0f}M",
             "days": v["days"],
         })
-    return summaries[:12]  # 理쒕? 12媛쒖썡
+    return summaries[:12]  # 최대 12개월
 
 
 def run_refresh_dts():
     try:
         dep, wit, bal, date = fetch_dts_data()
-        # 理쒖떊 ?⑥씪 ??(?섏쐞?명솚)
+        # 최신 단일 키 (하위호환)
         db_set("dts_deposits",    dep)
         db_set("dts_withdrawals", wit)
         db_set("dts_balance",     bal)
         db_set("dts_date",        date)
-        # ?쒕떖移?history ?꾩쟻 (理쒕? 23?곸뾽??
+        # 한달치 history 누적 (최대 23영업일)
         history = db_get("dts_history") or []
-        history = [h for h in history if h["date"] != date]  # 以묐났 ?쒓굅
+        history = [h for h in history if h["date"] != date]  # 중복 제거
         history.insert(0, {"date": date, "deposits": dep, "withdrawals": wit, "balance": bal})
         history = history[:23]
         db_set("dts_history", history)
-        # ?붾퀎 ?쒕㉧由?媛깆떊
+        # 월별 서머리 갱신
         monthly_summary = _build_monthly_summary(history)
         db_set("dts_monthly_summary", monthly_summary)
         db_set("dts_error",   None)
-        print(f"DTS 媛깆떊 ?꾨즺: {date} (history {len(history)}?? monthly {len(monthly_summary)}媛쒖썡)")
+        print(f"DTS 갱신 완료: {date} (history {len(history)}일, monthly {len(monthly_summary)}개월)")
     except Exception as e:
         db_set("dts_error", str(e))
-        print(f"DTS ?ㅻ쪟: {e}")
+        print(f"DTS 오류: {e}")
 
 
 def run_refresh_qra():
     try:
         db_set("qra_data",  fetch_qra_data())
         db_set("qra_error", None)
-        print("QRA 媛깆떊 ?꾨즺")
+        print("QRA 갱신 완료")
     except Exception as e:
         db_set("qra_error", str(e))
-        print(f"QRA ?ㅻ쪟: {e}")
+        print(f"QRA 오류: {e}")
 
 
-# ??????????????????????????????????????????????
-# Flask ?쇱슦??
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# Flask 라우트
+# ──────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -890,17 +890,17 @@ def index():
     model_info   = db_get("nl_model")
     error        = db_get("nl_error")
     next_h41     = db_get("nl_next_h41") or next_thursday_kst()
-    updated_at   = db_get_updated_at("nl_summary") or "??
+    updated_at   = db_get_updated_at("nl_summary") or "—"
 
     tic_chart_html = db_get("tic_chart")
     tic_table      = db_get("tic_table") or []
-    tic_updated_at = db_get("tic_updated_at") or "??
+    tic_updated_at = db_get("tic_updated_at") or "—"
     tic_error      = db_get("tic_error")
 
     dts_deposits    = db_get("dts_deposits") or []
     dts_withdrawals = db_get("dts_withdrawals") or []
     dts_balance     = db_get("dts_balance") or []
-    dts_date        = db_get("dts_date") or "??
+    dts_date        = db_get("dts_date") or "—"
     dts_error       = db_get("dts_error")
     dts_history         = db_get("dts_history") or []
     dts_monthly_summary = db_get("dts_monthly_summary") or []
@@ -1000,22 +1000,22 @@ def health():
     return "ok"
 
 
-# ??????????????????????????????????????????????
-# DB 珥덇린??+ 泥??곗씠??濡쒕뵫
-# ??????????????????????????????????????????????
+# ──────────────────────────────────────────────
+# DB 초기화 + 첫 데이터 로딩
+# ──────────────────────────────────────────────
 
 if DATABASE_URL:
     try:
         init_db()
-        # DB???곗씠?곌? ?놁쓣 ?뚮쭔 珥덇린 濡쒕뵫
+        # DB에 데이터가 없을 때만 초기 로딩
         if db_get("nl_summary") is None:
-            print("珥덇린 ?곗씠???놁쓬 ??諛깃렇?쇱슫??濡쒕뵫 ?쒖옉")
+            print("초기 데이터 없음 → 백그라운드 로딩 시작")
             for fn in [run_refresh_nl, run_refresh_tic, run_refresh_dts, run_refresh_qra]:
                 threading.Thread(target=fn, daemon=True).start()
     except Exception as e:
-        print(f"DB 珥덇린???ㅻ쪟: {e}")
+        print(f"DB 초기화 오류: {e}")
 else:
-    print("WARNING: DATABASE_URL ?섍꼍蹂?섍? ?ㅼ젙?섏? ?딆븯?듬땲??")
+    print("WARNING: DATABASE_URL 환경변수가 설정되지 않았습니다.")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
@@ -1089,7 +1089,7 @@ HTML_TEMPLATE = """
     .error{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:14px;color:#f87171;margin-bottom:12px;font-size:13px;}
     .loading{text-align:center;padding:60px;color:rgba(255,255,255,0.25);font-size:14px;}
     .footer{font-size:10px;color:rgba(255,255,255,0.15);text-align:center;padding:12px;border-top:1px solid rgba(255,255,255,0.05);margin-top:4px;}
-    /* DTS ?뱀뀡 */
+    /* DTS 섹션 */
     .dts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
     .dts-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px 16px;}
     .dts-hd{font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
@@ -1099,7 +1099,7 @@ HTML_TEMPLATE = """
     .dts-name{font-size:12px;color:rgba(255,255,255,0.4);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:10px;}
     .dts-amt{font-size:12px;font-weight:500;white-space:nowrap;}
     .c-in{color:#34d399;}.c-out{color:#f87171;}
-    /* 罹섎┛??*/
+    /* 캘린더 */
     .cal-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;}
     .cal-m{background:rgba(255,255,255,0.025);border-radius:8px;padding:9px 10px;border:1px solid rgba(255,255,255,0.05);}
     .cal-m.hl-red{border-color:rgba(248,113,113,0.3);}
@@ -1113,20 +1113,20 @@ HTML_TEMPLATE = """
     .cal-legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:rgba(255,255,255,0.35);}
     .cal-legend span{display:flex;align-items:center;gap:5px;}
     .cal-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
-    /* DTS 罹섎┛??? */
+    /* DTS 캘린더 셀 */
     .dts-cal-cell{border-radius:5px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;}
     .dts-cal-cell-inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:5px;font-size:11px;font-weight:500;transition:background .1s;}
     .dts-cal-cell-inner:hover{background:rgba(255,255,255,0.06);}
-    /* DTS ???ㅻ퉬寃뚯씠??*/
+    /* DTS 월 네비게이션 */
     .dts-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
     .dts-cal-nav-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:rgba(255,255,255,0.4);font-size:12px;padding:3px 10px;cursor:pointer;}
     .dts-cal-nav-btn:hover{background:rgba(255,255,255,0.06);color:#fff;}
     .dts-cal-month-label{font-size:12px;font-weight:500;color:rgba(255,255,255,0.6);}
-    /* ?댁쟾???쒕㉧由?移대뱶 */
+    /* 이전달 서머리 카드 */
     .dts-summary-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px 20px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;}
     .dts-summary-card .s-label{font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
     .dts-summary-card .s-val{font-size:16px;font-weight:500;}
-    /* QRA 寃쎈ℓ ?댄똻 - JS ?쒖뼱 fixed ?앹뾽 */
+    /* QRA 경매 툴팁 - JS 제어 fixed 팝업 */
     #auction-tooltip{display:none;position:fixed;z-index:9999;
       background:#1a1a22;border:1px solid rgba(255,255,255,0.15);border-radius:8px;
       padding:10px 13px;width:230px;pointer-events:none;
@@ -1136,12 +1136,12 @@ HTML_TEMPLATE = """
     #auction-tooltip .tip-neg{color:#f87171;font-weight:500;}
     #auction-tooltip .tip-neu{color:rgba(255,255,255,0.45);font-weight:500;}
     .has-tip{cursor:default;}
-    /* ?몃씪????(DTS/QRA) */
+    /* 인라인 탭 (DTS/QRA) */
     .itab-row{display:flex;gap:4px;margin-bottom:10px;}
     .itab{font-size:11px;padding:4px 14px;border:1px solid rgba(255,255,255,0.1);border-radius:20px;background:transparent;cursor:pointer;color:rgba(255,255,255,0.3);transition:all .15s;}
     .itab.active{background:rgba(96,165,250,0.12);border-color:rgba(96,165,250,0.35);color:#60a5fa;}
     .itab-panel{display:none;}.itab-panel.active{display:block;}
-    /* QRA 諛?李⑦듃 */
+    /* QRA 바 차트 */
     .qra-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11px;}
     .qra-bar-label{width:110px;color:rgba(255,255,255,0.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;}
     .qra-bar-bg{flex:1;height:5px;background:rgba(255,255,255,0.05);border-radius:3px;}
@@ -1154,11 +1154,11 @@ HTML_TEMPLATE = """
     .qra-pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
     .qra-pill{font-size:10px;padding:2px 10px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.3);}
     .qra-pill.hl{border-color:rgba(96,165,250,0.4);color:#60a5fa;background:rgba(96,165,250,0.08);}
-    /* ?묎린/?쇱튂湲?*/
+    /* 접기/펼치기 */
     details.collapsible{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;}
     details.collapsible summary{padding:11px 16px;font-size:10px;font-weight:500;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;display:flex;align-items:center;gap:8px;list-style:none;user-select:none;}
     details.collapsible summary::-webkit-details-marker{display:none;}
-    details.collapsible summary::before{content:'??;font-size:8px;color:rgba(255,255,255,0.2);transition:transform .2s;flex-shrink:0;}
+    details.collapsible summary::before{content:'▶';font-size:8px;color:rgba(255,255,255,0.2);transition:transform .2s;flex-shrink:0;}
     details.collapsible[open] summary::before{transform:rotate(90deg);}
     details.collapsible summary:hover{color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.02);}
     .collapsible-body{padding:14px 16px;border-top:1px solid rgba(255,255,255,0.06);}
@@ -1169,7 +1169,7 @@ HTML_TEMPLATE = """
       {% if not summary and not error %}setTimeout(()=>location.reload(),10000);{% endif %}
     };
     function manualRefresh(){
-      document.getElementById('cd').textContent='媛깆떊 以?..';
+      document.getElementById('cd').textContent='갱신 중...';
       fetch('/refresh').then(()=>setTimeout(()=>location.reload(),3000));
     }
     function switchTab(id){
@@ -1197,7 +1197,7 @@ HTML_TEMPLATE = """
       const el=getPlotlyDiv(cid); if(!el||!window.Plotly) return;
       Plotly.relayout(el,{'xaxis.autorange':true,'yaxis.autorange':true});
     }
-    // 寃쎈ℓ ?댄똻 (留덉슦???꾩튂 湲곕컲 fixed)
+    // 경매 툴팁 (마우스 위치 기반 fixed)
     document.addEventListener('DOMContentLoaded', function(){
       const tip = document.createElement('div');
       tip.id = 'auction-tooltip';
@@ -1233,51 +1233,51 @@ HTML_TEMPLATE = """
 </head>
 <body>
 <div class="header">
-  <h1><span class="nav-dot"></span> Fed Dashboard <span class="badge">??Live</span></h1>
+  <h1><span class="nav-dot"></span> Fed Dashboard <span class="badge">● Live</span></h1>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     <span class="meta" id="cd">Updated: {{ updated_at }}</span>
-    <button class="refresh-btn" onclick="manualRefresh()">??Refresh</button>
+    <button class="refresh-btn" onclick="manualRefresh()">↻ Refresh</button>
   </div>
 </div>
 
 <div class="container">
 <div class="tabs">
   <div class="tab active" id="tab-btn-nl" onclick="switchTab('nl')">Net Liquidity</div>
-  <div class="tab" id="tab-btn-tic" onclick="switchTab('tic')">援??蹂?誘멸뎅梨?蹂댁쑀</div>
+  <div class="tab" id="tab-btn-tic" onclick="switchTab('tic')">국가별 미국채 보유</div>
 </div>
 
 <div id="tab-nl" class="tab-content active">
 {% if error %}
   <div class="error">Error: {{ error }}</div>
 {% elif not summary %}
-  <div class="loading">FRED ?곗씠??濡쒕뵫 以?.. ?좎떆 ???먮룞 ?덈줈怨좎묠?⑸땲??</div>
+  <div class="loading">FRED 데이터 로딩 중... 잠시 후 자동 새로고침됩니다.</div>
 {% else %}
 
   <div class="metrics">
     <div class="mc"><div class="mc-lbl">Net Liquidity</div><div class="mc-val">{{ summary.nl }}</div><div class="mc-sub {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_chg }}</div></div>
     <div class="mc"><div class="mc-lbl">NL Regression FV</div><div class="mc-val">{{ summary.fv_nl }}</div><div class="mc-sub {{ 'pos' if summary.fv_nl_cheap else ('neg' if summary.fv_nl_cheap is not none else 'neu') }}">{{ summary.fv_nl_gap }}</div></div>
-    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">二쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} 쨌 H.4.1 留ㅼ＜ ?섏슂??/div></div>
-    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">二쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} 쨌 ?ㅼ쓬 諛쒗몴 ~{{ next_h41 }}</div></div>
-    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">?쇨컙</span> <a class="src-link" href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank">FRED??/a></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
+    <div class="mc"><div class="mc-lbl">WALCL <span style="font-weight:400;color:#bbb;">주간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WALCL" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.walcl }}</div><div class="mc-sub neu">{{ summary.walcl_date }} · H.4.1 매주 수요일</div></div>
+    <div class="mc"><div class="mc-lbl">TGA <span style="font-weight:400;color:#bbb;">주간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.tga }}</div><div class="mc-sub neu">{{ summary.tga_date }} · 다음 발표 ~{{ next_h41 }}</div></div>
+    <div class="mc"><div class="mc-lbl">RRP <span style="font-weight:400;color:#bbb;">일간</span> <a class="src-link" href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank">FRED↗</a></div><div class="mc-val">{{ summary.rrp }}</div><div class="mc-sub neu">{{ summary.rrp_date }}</div></div>
     <div class="mc"><div class="mc-lbl">S&P 500</div><div class="mc-val">{{ summary.spx_raw }}</div><div class="mc-sub neu">{{ summary.base_date }}</div></div>
   </div>
 
-  <div class="section-title">?붿빟</div>
+  <div class="section-title">요약</div>
   <div class="summary-box">
-    <div class="row"><span class="lbl">湲곗???/span><span class="val">{{ summary.base_date }}</span></div>
+    <div class="row"><span class="lbl">기준일</span><span class="val">{{ summary.base_date }}</span></div>
     <div class="row"><span class="lbl">WALCL ({{ summary.walcl_date }})</span><span class="val {{ 'pos' if summary.walcl_pos else 'neg' }}">{{ summary.walcl_raw }}</span></div>
     <div class="row"><span class="lbl">TGA ({{ summary.tga_date }})</span><span class="val {{ 'pos' if summary.tga_pos else 'neg' }}">{{ summary.tga_raw }}</span></div>
     <div class="row"><span class="lbl">RRP ({{ summary.rrp_date }})</span><span class="val {{ 'pos' if summary.rrp_pos else 'neg' }}">{{ summary.rrp_raw }}</span></div>
     <div class="row"><span class="lbl">Net Liquidity</span><span class="val {{ 'pos' if summary.nl_chg_pos else 'neg' }}">{{ summary.nl_raw }} &nbsp;({{ summary.nl_chg }})</span></div>
     <hr class="divider">
-    <div class="row"><span class="lbl">NL ?뚭? 怨듭젙媛移?/span><span class="val">{{ summary.fv_nl }}</span></div>
-    <div class="row"><span class="lbl">SPX ?꾩옱媛</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
+    <div class="row"><span class="lbl">NL 회귀 공정가치</span><span class="val">{{ summary.fv_nl }}</span></div>
+    <div class="row"><span class="lbl">SPX 현재가</span><span class="val {{ 'pos' if summary.fv_nl_cheap else 'neg' }}">{{ summary.spx_raw }} &nbsp;({{ summary.fv_nl_gap }})</span></div>
   </div>
 
-  <div class="section-title">理쒓렐 30 ?곸뾽???곗씠??/div>
+  <div class="section-title">최근 30 영업일 데이터</div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>?좎쭨</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">愿대━??/th></tr></thead>
+      <thead><tr><th>날짜</th><th style="text-align:right;">WALCL(B)</th><th style="text-align:right;">TGA(B)</th><th style="text-align:right;">RRP(B)</th><th style="text-align:right;">Net Liq(B)</th><th style="text-align:right;">DoD</th><th style="text-align:right;">SP500</th><th style="text-align:right;">NL FV</th><th style="text-align:right;">괴리율</th></tr></thead>
       <tbody>
         {% for row in table_rows %}
         <tr>
@@ -1285,7 +1285,7 @@ HTML_TEMPLATE = """
           <td><strong>{{ row.nl }}</strong></td>
           <td>{% if row.dod_pos is none %}<span style="color:rgba(255,255,255,0.3);font-size:11px;">{{ row.dod }}</span>{% elif row.dod_pos %}<span class="badge-up">{{ row.dod }}</span>{% else %}<span class="badge-dn">{{ row.dod }}</span>{% endif %}</td>
           <td>{{ row.spx }}</td><td>{{ row.fv_nl }}</td>
-          <td>{% if row.gap is not none %}<span class="{{ 'badge-dn' if row.gap_pos else 'badge-up' }}">{{ row.gap }}</span>{% else %}??% endif %}</td>
+          <td>{% if row.gap is not none %}<span class="{{ 'badge-dn' if row.gap_pos else 'badge-up' }}">{{ row.gap }}</span>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -1295,68 +1295,68 @@ HTML_TEMPLATE = """
   <div class="chart-card" style="padding:16px 20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
-        <div class="chart-title" style="margin-bottom:6px;">WALCL 쨌 TGA 쨌 RRP 쨌 S&P 500 ???κ린 李⑦듃 (2000?뱎resent)</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.3);">鍮좊Ⅸ ?낅뜲?댄듃瑜??꾪빐 李⑦듃??FRED?먯꽌 吏곸젒 ?뺤씤</div>
+        <div class="chart-title" style="margin-bottom:6px;">WALCL · TGA · RRP · S&P 500 — 장기 차트 (2000–present)</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.3);">빠른 업데이트를 위해 차트는 FRED에서 직접 확인</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <a href="https://fred.stlouisfed.org/graph/?g=1bKMn" target="_blank"
            style="font-size:11px;padding:6px 14px;border:1px solid rgba(96,165,250,0.4);border-radius:6px;color:#60a5fa;text-decoration:none;background:rgba(96,165,250,0.06);">
-          NL 李⑦듃 ??
+          NL 차트 ↗
         </a>
         <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank"
            style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
-          WALCL ??
+          WALCL ↗
         </a>
         <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank"
            style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
-          TGA ??
+          TGA ↗
         </a>
         <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank"
            style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
-          RRP ??
+          RRP ↗
         </a>
         <a href="https://fred.stlouisfed.org/series/SP500" target="_blank"
            style="font-size:11px;padding:6px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.5);text-decoration:none;background:rgba(255,255,255,0.03);">
-          S&P 500 ??
+          S&P 500 ↗
         </a>
       </div>
     </div>
   </div>
 
-  <div class="section-title">TGA ?ъ슜泥?쨌 DTS 쨌 QRA
-    <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 湲곗?</span>
-    <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata ??/a>
+  <div class="section-title">TGA 사용처 · DTS · QRA
+    <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ dts_date }} 기준</span>
+    <a class="src-link" href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank">fiscaldata ↗</a>
   </div>
 
   <div id="dts-qra-tabs">
     <div class="itab-row">
-      <button class="itab active" id="dts-qra-tabs-tab-dts" onclick="switchItab('dts-qra-tabs','dts')">DTS ?쇱씪 ?댁뿭</button>
-      <button class="itab" id="dts-qra-tabs-tab-qra" onclick="switchItab('dts-qra-tabs','qra')">QRA 援?콈諛쒗뻾</button>
+      <button class="itab active" id="dts-qra-tabs-tab-dts" onclick="switchItab('dts-qra-tabs','dts')">DTS 일일 내역</button>
+      <button class="itab" id="dts-qra-tabs-tab-qra" onclick="switchItab('dts-qra-tabs','qra')">QRA 국채발행</button>
     </div>
 
-    <!-- DTS ?⑤꼸 -->
+    <!-- DTS 패널 -->
     <div class="itab-panel active" id="dts-qra-tabs-panel-dts">
       {% if dts_error %}
-      <div class="error" style="font-size:12px;">DTS ?곗씠???ㅻ쪟: {{ dts_error }}</div>
+      <div class="error" style="font-size:12px;">DTS 데이터 오류: {{ dts_error }}</div>
       {% elif not dts_history and not dts_deposits %}
-      <div class="loading" style="padding:20px;">DTS ?곗씠??濡쒕뵫 以?..</div>
+      <div class="loading" style="padding:20px;">DTS 데이터 로딩 중...</div>
       {% else %}
 
-      <!-- 罹섎┛??-->
+      <!-- 캘린더 -->
       <div style="margin-bottom:10px;">
         <div class="dts-cal-nav">
-          <button class="dts-cal-nav-btn" id="dts-cal-btn-prev" onclick="dtsNavMonth(-1)">&#8249; ?댁쟾??/button>
+          <button class="dts-cal-nav-btn" id="dts-cal-btn-prev" onclick="dtsNavMonth(-1)">&#8249; 이전달</button>
           <span class="dts-cal-month-label" id="dts-cal-nav-label"></span>
-          <button class="dts-cal-nav-btn" id="dts-cal-btn-next" onclick="dtsNavMonth(1)">?ㅼ쓬??&#8250;</button>
+          <button class="dts-cal-nav-btn" id="dts-cal-btn-next" onclick="dtsNavMonth(1)">다음달 &#8250;</button>
         </div>
         <div id="dts-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px;"></div>
         <div style="display:flex;gap:10px;font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(96,165,250,0.25);margin-right:3px;"></span>?곗씠???덉쓬</span>
-          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,0.04);margin-right:3px;"></span>?곗씠???놁쓬</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(96,165,250,0.25);margin-right:3px;"></span>데이터 있음</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,0.04);margin-right:3px;"></span>데이터 없음</span>
         </div>
       </div>
 
-      <!-- ?좏깮???곸꽭 -->
+      <!-- 선택일 상세 -->
       <div id="dts-detail"></div>
 
       <script>
@@ -1366,18 +1366,18 @@ HTML_TEMPLATE = """
         var dataMap = {};
         history.forEach(function(h){ dataMap[h.date] = h; });
 
-        // ?꾩옱 蹂댁뿬以???(理쒖떊 ?곗씠??湲곗?)
+        // 현재 보여줄 월 (최신 데이터 기준)
         var baseDate = history.length > 0 ? new Date(history[0].date + 'T00:00:00') : new Date();
         var viewYear  = baseDate.getFullYear();
         var viewMonth = baseDate.getMonth(); // 0-based
         var selected  = history.length > 0 ? history[0].date : null;
 
-        // 理쒖떊 ?곗씠?곌? ?덈뒗 ??(???붽퉴吏留?"?꾩옱??濡??욎쑝濡?紐?媛?
+        // 최신 데이터가 있는 월 (이 월까지만 "현재달"로 앞으로 못 감)
         var latestYear  = viewYear;
         var latestMonth = viewMonth;
 
         function fmtMonth(y, m){
-          return y + '??' + (m+1) + '??;
+          return y + '년 ' + (m+1) + '월';
         }
 
         function isCurrent(y, m){
@@ -1429,7 +1429,7 @@ HTML_TEMPLATE = """
           }
           grid.innerHTML = html;
 
-          // ?댁쟾?ъ씠硫??쒕㉧由?移대뱶, ?꾩옱?ъ씠硫??곸꽭
+          // 이전달이면 서머리 카드, 현재달이면 상세
           var detailEl = document.getElementById('dts-detail');
           if(!isCurrent(yr, mo)){
             var sm = getSummaryForMonth(yr, mo);
@@ -1437,14 +1437,14 @@ HTML_TEMPLATE = """
               var netColor = sm.net_pos ? '#34d399' : '#f87171';
               detailEl.innerHTML =
                 '<div class="dts-summary-card">'
-                + '<div><div class="s-label">?붽컙 ?쒕???/div><div class="s-val" style="color:'+netColor+';">'+sm.net+'</div></div>'
-                + '<div><div class="s-label">珥??낃툑</div><div class="s-val" style="color:#34d399;">'+sm.total_dep+'</div></div>'
-                + '<div><div class="s-label">珥?異쒓툑</div><div class="s-val" style="color:#f87171;">'+sm.total_wit+'</div></div>'
-                + '<div><div class="s-label">吏묎퀎 ?곸뾽??/div><div class="s-val" style="color:rgba(255,255,255,0.5);">'+sm.days+'??/div></div>'
-                + '<div style="font-size:10px;color:rgba(255,255,255,0.2);align-self:flex-end;">???댁쟾?????쇰퀎 ?곸꽭 ?놁쓬</div>'
+                + '<div><div class="s-label">월간 순변동</div><div class="s-val" style="color:'+netColor+';">'+sm.net+'</div></div>'
+                + '<div><div class="s-label">총 입금</div><div class="s-val" style="color:#34d399;">'+sm.total_dep+'</div></div>'
+                + '<div><div class="s-label">총 출금</div><div class="s-val" style="color:#f87171;">'+sm.total_wit+'</div></div>'
+                + '<div><div class="s-label">집계 영업일</div><div class="s-val" style="color:rgba(255,255,255,0.5);">'+sm.days+'일</div></div>'
+                + '<div style="font-size:10px;color:rgba(255,255,255,0.2);align-self:flex-end;">※ 이전달 — 일별 상세 없음</div>'
                 + '</div>';
             } else {
-              detailEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.2);padding:12px 0;">?????쒕㉧由??곗씠???놁쓬</div>';
+              detailEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.2);padding:12px 0;">이 달 서머리 데이터 없음</div>';
             }
           } else {
             renderDetail();
@@ -1462,7 +1462,7 @@ HTML_TEMPLATE = """
           viewMonth += dir;
           if(viewMonth < 0){ viewMonth = 11; viewYear--; }
           if(viewMonth > 11){ viewMonth = 0;  viewYear++; }
-          // 誘몃옒濡?紐?媛?
+          // 미래로 못 감
           if(viewYear > latestYear || (viewYear === latestYear && viewMonth > latestMonth)){
             viewYear = latestYear; viewMonth = latestMonth;
           }
@@ -1486,10 +1486,10 @@ HTML_TEMPLATE = """
             return '<div class="dts-row"><span class="dts-name">'+r.name+'</span><span class="dts-amt" style="color:'+col+';">'+r.amt+'</span></div>';
           }).join('');
           el.innerHTML = '<div class="dts-grid">'
-            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>二쇱슂 ?낃툑 ('+d.date+')</div>'+depRows+'</div>'
-            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>二쇱슂 異쒓툑 ('+d.date+')</div>'+witRows+'</div>'
+            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#34d399;"></span>주요 입금 ('+d.date+')</div>'+depRows+'</div>'
+            + '<div class="dts-card"><div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>주요 출금 ('+d.date+')</div>'+witRows+'</div>'
             + '</div>'
-            + '<div class="dts-card" style="margin-bottom:12px;"><div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA ?뱀씪 ?쒕????붿빟</div>'+balRows+'</div>';
+            + '<div class="dts-card" style="margin-bottom:12px;"><div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>TGA 당일 순변동 요약</div>'+balRows+'</div>';
         }
 
         renderNav();
@@ -1499,27 +1499,27 @@ HTML_TEMPLATE = """
       {% endif %}
     </div>
 
-    <!-- QRA ?⑤꼸 -->
+    <!-- QRA 패널 -->
     <div class="itab-panel" id="dts-qra-tabs-panel-qra">
       {% if qra_error %}
-      <div class="error" style="font-size:12px;">QRA ?곗씠???ㅻ쪟: {{ qra_error }}</div>
+      <div class="error" style="font-size:12px;">QRA 데이터 오류: {{ qra_error }}</div>
       {% elif not qra_data %}
-      <div class="loading" style="padding:20px;">QRA ?곗씠??濡쒕뵫 以?..</div>
+      <div class="loading" style="padding:20px;">QRA 데이터 로딩 중...</div>
       {% else %}
-      <!-- 硫뷀듃由?移대뱶 -->
+      <!-- 메트릭 카드 -->
       <div class="metrics" style="margin-bottom:10px;">
-        <div class="mc"><div class="mc-lbl">?ㅼ쓬 QRA 諛쒗몴</div><div class="mc-val" style="font-size:16px;">{{ qra_data.next_qra }}</div><div class="mc-sub neu">遺꾧린 李⑥엯 ?섏슂 諛쒗몴</div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 T-Bill 諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.tbill_30d }}</div><div class="mc-sub neg">?좊룞???≪닔??/div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 荑좏룿梨?諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.coupon_30d }}</div><div class="mc-sub neg">NL ?뺣컯??/div></div>
-        <div class="mc"><div class="mc-lbl">理쒓렐 TIPS 諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.tips_30d }}</div><div class="mc-sub neu">臾쇨??곕룞</div></div>
-        <div class="mc"><div class="mc-lbl">?됯퇏 ?묒같瑜?(BTC)</div><div class="mc-val">{{ qra_data.avg_btc }}</div><div class="mc-sub neu">理쒓렐 30???됯퇏</div></div>
-        <div class="mc"><div class="mc-lbl">珥?諛쒗뻾 (30??</div><div class="mc-val">{{ qra_data.total_30d }}</div><div class="mc-sub neg">?쒖옣 ?≪닔 洹쒕え??/div></div>
+        <div class="mc"><div class="mc-lbl">다음 QRA 발표</div><div class="mc-val" style="font-size:16px;">{{ qra_data.next_qra }}</div><div class="mc-sub neu">분기 차입 수요 발표</div></div>
+        <div class="mc"><div class="mc-lbl">최근 T-Bill 발행 (30일)</div><div class="mc-val">{{ qra_data.tbill_30d }}</div><div class="mc-sub neg">유동성 흡수↓</div></div>
+        <div class="mc"><div class="mc-lbl">최근 쿠폰채 발행 (30일)</div><div class="mc-val">{{ qra_data.coupon_30d }}</div><div class="mc-sub neg">NL 압박↓</div></div>
+        <div class="mc"><div class="mc-lbl">최근 TIPS 발행 (30일)</div><div class="mc-val">{{ qra_data.tips_30d }}</div><div class="mc-sub neu">물가연동</div></div>
+        <div class="mc"><div class="mc-lbl">평균 응찰률 (BTC)</div><div class="mc-val">{{ qra_data.avg_btc }}</div><div class="mc-sub neu">최근 30일 평균</div></div>
+        <div class="mc"><div class="mc-lbl">총 발행 (30일)</div><div class="mc-val">{{ qra_data.total_30d }}</div><div class="mc-sub neg">시장 흡수 규모↓</div></div>
       </div>
 
-      <!-- 諛쒗뻾 援ъ꽦 諛?-->
+      <!-- 발행 구성 바 -->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>援?콈 諛쒗뻾 援ъ꽦 (理쒓렐 30??쨌 ?좊룞???≪닔)
-          <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ??/a>
+        <div class="dts-hd"><span class="dts-dot" style="background:#f87171;"></span>국채 발행 구성 (최근 30일 · 유동성 흡수)
+          <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ↗</a>
         </div>
         {% for item in qra_data.breakdown %}
         <div class="qra-bar-row">
@@ -1529,47 +1529,47 @@ HTML_TEMPLATE = """
         </div>
         {% endfor %}
         <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
-          * 援?콈 諛쒗뻾 ??TGA ?좎엯 ??NL 媛먯냼. T-Bill ?꾩＜ 諛쒗뻾 ??MMF(RRP)???곸뇙 ?④낵 ?덉쓬.
+          * 국채 발행 → TGA 유입 → NL 감소. T-Bill 위주 발행 시 MMF(RRP)↓ 상쇄 효과 있음.
         </div>
       </div>
 
-      <!-- QRA ?먮룆 湲곗? -->
+      <!-- QRA 판독 기준 -->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>QRA ?좊룞???먮룆 湲곗?</div>
-        <div class="dts-row"><span class="dts-name">T-Bill 鍮꾩쨷 ?믪쓬</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">RRP???곸뇙</span><span class="qra-tag tag-in">NL 以묐┰~?좎엯</span></div>
-        <div class="dts-row"><span class="dts-name">荑좏룿梨?鍮꾩쨷 ?믪쓬</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">???以鍮꾧툑 ?≪닔</span><span class="qra-tag tag-out">NL ?뺣컯</span></div>
-        <div class="dts-row"><span class="dts-name">李⑥엯 洹쒕え ?덉긽??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 湲됱쬆 ?덇퀬</span><span class="qra-tag tag-out">NL ?섎씫 ?좏샇</span></div>
-        <div class="dts-row"><span class="dts-name">李⑥엯 洹쒕え ?덉긽??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?꾨쭔 ?좎?</span><span class="qra-tag tag-in">NL ?덉젙 ?좏샇</span></div>
-        <div class="dts-row"><span class="dts-name">遺梨꾪븳???묒긽 以?/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?뚯쭊 吏??/span><span class="qra-tag tag-in">NL ?몄쐞???곸듅</span></div>
-        <div class="dts-row"><span class="dts-name">遺梨꾪븳???댁냼 ??/span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA ?ъ땐??/span><span class="qra-tag tag-out">NL 湲됰씫 ?꾪뿕</span></div>
+        <div class="dts-hd"><span class="dts-dot" style="background:#60a5fa;"></span>QRA 유동성 판독 기준</div>
+        <div class="dts-row"><span class="dts-name">T-Bill 비중 높음</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">RRP↓ 상쇄</span><span class="qra-tag tag-in">NL 중립~유입</span></div>
+        <div class="dts-row"><span class="dts-name">쿠폰채 비중 높음</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">은행 준비금 흡수</span><span class="qra-tag tag-out">NL 압박</span></div>
+        <div class="dts-row"><span class="dts-name">차입 규모 예상↑</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 급증 예고</span><span class="qra-tag tag-out">NL 하락 신호</span></div>
+        <div class="dts-row"><span class="dts-name">차입 규모 예상↓</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 완만 유지</span><span class="qra-tag tag-in">NL 안정 신호</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 협상 중</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 소진 지속</span><span class="qra-tag tag-in">NL 인위적 상승</span></div>
+        <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span class="dts-amt" style="color:rgba(255,255,255,0.3);font-size:11px;">TGA 재충전</span><span class="qra-tag tag-out">NL 급락 위험</span></div>
       </div>
 
-      <!-- 諛쒗몴 ?쇱젙 -->
+      <!-- 발표 일정 -->
       <div class="dts-card" style="margin-bottom:10px;">
-        <div class="dts-hd"><span class="dts-dot" style="background:#fbbf24;"></span>QRA 諛쒗몴 ?쇱젙 (2026)</div>
+        <div class="dts-hd"><span class="dts-dot" style="background:#fbbf24;"></span>QRA 발표 일정 (2026)</div>
         <div class="qra-pill-row">
           {% for q in qra_data.schedule %}
           <span class="qra-pill {{ 'hl' if q.current else '' }}">{{ q.label }}</span>
           {% endfor %}
         </div>
         <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:8px;">
-          TBAC 諛쒗몴 ?뱀씪 ?쒖옣 蹂?숈꽦 二쇱쓽. 李⑥엯 洹쒕え????湲덈━??쨌 NL???뺣젰.
+          TBAC 발표 당일 시장 변동성 주의. 차입 규모↑ → 금리↑ · NL↓ 압력.
         </div>
       </div>
 
-      <!-- 理쒓렐 寃쎈ℓ ?댁뿭 -->
-      <div class="section-title" style="margin-top:4px;">理쒓렐 寃쎈ℓ ?댁뿭 (30??
-        <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ??/a>
+      <!-- 최근 경매 내역 -->
+      <div class="section-title" style="margin-top:4px;">최근 경매 내역 (30일)
+        <a class="src-link" href="https://treasurydirect.gov/auctions/announcements-data-results/announcement-results-press-releases/auction-results/" target="_blank">TreasuryDirect ↗</a>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th style="text-align:left;">寃쎈ℓ??/th>
-            <th style="text-align:left;">醫낅쪟</th>
-            <th style="text-align:left;">留뚭린</th>
-            <th>諛쒗뻾??B)</th>
-            <th>?묒같瑜?/th>
-            <th>湲덈━/?좎씤??/th>
+            <th style="text-align:left;">경매일</th>
+            <th style="text-align:left;">종류</th>
+            <th style="text-align:left;">만기</th>
+            <th>발행액(B)</th>
+            <th>응찰률</th>
+            <th>금리/할인율</th>
           </tr></thead>
           <tbody>
             {% for r in qra_data.auctions %}
@@ -1577,7 +1577,7 @@ HTML_TEMPLATE = """
               <td style="text-align:left;">{{ r.date }}</td>
               <td style="text-align:left;">
                 <span class="has-tip" style="font-size:11px;padding:1px 7px;border-radius:4px;background:{{ r.type_bg }};color:{{ r.type_color }};"
-                  data-tip-title="{{ r.tip_title }} 쨌 {{ r.term }}"
+                  data-tip-title="{{ r.tip_title }} · {{ r.term }}"
                   data-tip-body="{{ r.tip_body }}"
                   data-tip-liq="{{ r.tip_liq }}"
                   data-tip-neg="{{ 'true' if r.tip_neg else 'false' }}">{{ r.stype }}</span>
@@ -1586,16 +1586,16 @@ HTML_TEMPLATE = """
               <td>{{ r.amt }}</td>
               <td>
                 <span class="{{ 'badge-up' if r.btc_ok else 'badge-dn' }} has-tip"
-                  data-tip-title="?묒같瑜?(Bid-to-Cover)"
-                  data-tip-body="寃쎌웳 ?낆같 ?쒖텧??첨 ?숈같?? ?섏슂 媛뺣룄 吏??"
-                  data-tip-liq="{{ '2.3x???섏슂 ?묓샇' if r.btc_ok else '2.3x???섏슂 遺議?寃쎄퀬' }}"
+                  data-tip-title="응찰률 (Bid-to-Cover)"
+                  data-tip-body="경쟁 입찰 제출액 ÷ 낙찰액. 수요 강도 지표."
+                  data-tip-liq="{{ '2.3x↑ 수요 양호' if r.btc_ok else '2.3x↓ 수요 부족 경고' }}"
                   data-tip-neg="{{ 'false' if r.btc_ok else 'true' }}">{{ r.btc }}</span>
               </td>
               <td>
                 <span class="has-tip" style="color:rgba(255,255,255,0.5);"
-                  data-tip-title="?숈같 湲덈━/?좎씤??
-                  data-tip-body="{{ 'T-Bill: ?좎씤??Discount Rate) 湲곗?. ?믪쓣?섎줉 ?④린 ?먭툑 鍮꾩슜??' if r.is_bill else '荑좏룿梨? 理쒓퀬 ?숈같 ?섏씡瑜?High Yield). ?믪쓣?섎줉 ?ъ젙 ?댁옄 遺?닳넁 쨌 NL ?κ린 ?뺣컯.' }}"
-                  data-tip-liq="{{ '?④린湲덈━ 諛⑺뼢??吏?? if r.is_bill else '?κ린湲덈━????二쇱떇 硫?고뵆 ?뺣컯' }}"
+                  data-tip-title="낙찰 금리/할인율"
+                  data-tip-body="{{ 'T-Bill: 할인율(Discount Rate) 기준. 높을수록 단기 자금 비용↑.' if r.is_bill else '쿠폰채: 최고 낙찰 수익률(High Yield). 높을수록 재정 이자 부담↑ · NL 장기 압박.' }}"
+                  data-tip-liq="{{ '단기금리 방향성 지표' if r.is_bill else '장기금리↑ → 주식 멀티플 압박' }}"
                   data-tip-neg="{{ 'false' if r.is_bill else 'true' }}">{{ r.rate }}</span>
               </td>
             </tr>
@@ -1607,146 +1607,146 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <div class="section-title">?ъ젙 ?대깽??罹섎┛??
-    <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ??/a>
+  <div class="section-title">재정 이벤트 캘린더
+    <a class="src-link" href="https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendar" target="_blank">IRS Calendar ↗</a>
   </div>
   <div class="chart-card" style="padding:14px 16px;margin-bottom:12px;">
     <div class="cal-legend">
-      <span><span class="cal-legend-dot" style="background:#34d399;"></span>?좊룞???좎엯 (?섍툒쨌?뺣?吏異?</span>
-      <span><span class="cal-legend-dot" style="background:#f87171;"></span>?좊룞???좎텧 (?멸툑?⑸?쨌援?콈諛쒗뻾)</span>
-      <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>以묐┰/諛쒗몴</span>
+      <span><span class="cal-legend-dot" style="background:#34d399;"></span>유동성 유입 (환급·정부지출)</span>
+      <span><span class="cal-legend-dot" style="background:#f87171;"></span>유동성 유출 (세금납부·국채발행)</span>
+      <span><span class="cal-legend-dot" style="background:rgba(255,255,255,0.2);"></span>중립/발표</span>
     </div>
     <div class="cal-grid">
-      <div class="cal-m"><div class="cal-mn">1??/div>
-        <span class="cal-ev ev-out">4Q 異붿젙???⑸? (1/15)</span>
-        <span class="cal-ev ev-neu">IRS ?좉퀬?쒖쫵 媛쒖떆</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌硫붾뵒耳?닳넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~1/29)</span>
+      <div class="cal-m"><div class="cal-mn">1월</div>
+        <span class="cal-ev ev-out">4Q 추정세 납부 (1/15)</span>
+        <span class="cal-ev ev-neu">IRS 신고시즌 개시</span>
+        <span class="cal-ev ev-in">사회보장·메디케어↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~1/29)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">2??/div>
-        <span class="cal-ev ev-in">?섍툒 ?쇳겕 (W-2)?묅넁</span>
-        <span class="cal-ev ev-in">EITC쨌CTC ?섍툒 媛쒖떆</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌硫붾뵒耳?닳넁</span>
-        <span class="cal-ev ev-neu">H.4.1 留ㅼ＜ ?섏슂??/span>
+      <div class="cal-m"><div class="cal-mn">2월</div>
+        <span class="cal-ev ev-in">환급 피크 (W-2)↑↑</span>
+        <span class="cal-ev ev-in">EITC·CTC 환급 개시</span>
+        <span class="cal-ev ev-in">사회보장·메디케어↑</span>
+        <span class="cal-ev ev-neu">H.4.1 매주 수요일</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">3??/div>
-        <span class="cal-ev ev-in">?섍툒 吏?띯넁</span>
-        <span class="cal-ev ev-neu">S-Corp쨌?뚰듃?덉떗 ?좉퀬(3/15)</span>
-        <span class="cal-ev ev-neu">T-Note 遺꾧린諛쒗뻾</span>
-        <span class="cal-ev ev-out">援?콈 留뚭린쨌濡ㅼ삤踰꾟넃</span>
+      <div class="cal-m"><div class="cal-mn">3월</div>
+        <span class="cal-ev ev-in">환급 지속↑</span>
+        <span class="cal-ev ev-neu">S-Corp·파트너십 신고(3/15)</span>
+        <span class="cal-ev ev-neu">T-Note 분기발행</span>
+        <span class="cal-ev ev-out">국채 만기·롤오버↓</span>
       </div>
-      <div class="cal-m hl-red"><div class="cal-mn red">4????/div>
-        <span class="cal-ev ev-out">Tax Day (4/15)?볛넃</span>
-        <span class="cal-ev ev-out">1Q 異붿젙??(4/15)??/span>
-        <span class="cal-ev ev-out">TGA 湲됱쬆 ??NL 媛먯냼</span>
-        <span class="cal-ev ev-neu">?곗옣?좎껌(Form 4868)</span>
+      <div class="cal-m hl-red"><div class="cal-mn red">4월 ★</div>
+        <span class="cal-ev ev-out">Tax Day (4/15)↓↓</span>
+        <span class="cal-ev ev-out">1Q 추정세 (4/15)↓</span>
+        <span class="cal-ev ev-out">TGA 급증 → NL 감소</span>
+        <span class="cal-ev ev-neu">연장신청(Form 4868)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">5??/div>
-        <span class="cal-ev ev-in">?붿뿬 ?섍툒 吏?띯넁</span>
-        <span class="cal-ev ev-neu">Form 990 鍮꾩쁺由??좉퀬</span>
-        <span class="cal-ev ev-in">?뺣? 吏異??뺤긽?붴넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~4?붾쭚)</span>
+      <div class="cal-m"><div class="cal-mn">5월</div>
+        <span class="cal-ev ev-in">잔여 환급 지속↑</span>
+        <span class="cal-ev ev-neu">Form 990 비영리 신고</span>
+        <span class="cal-ev ev-in">정부 지출 정상화↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~4월말)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">6??/div>
-        <span class="cal-ev ev-out">2Q 異붿젙??(6/15)??/span>
-        <span class="cal-ev ev-in">援?갑쨌?명봽??吏異쒋넁</span>
-        <span class="cal-ev ev-neu">T-Bill ?뺢린 濡ㅼ삤踰?/span>
-        <span class="cal-ev ev-neu">FOMC ?뚯쓽(?듭긽)</span>
+      <div class="cal-m"><div class="cal-mn">6월</div>
+        <span class="cal-ev ev-out">2Q 추정세 (6/15)↓</span>
+        <span class="cal-ev ev-in">국방·인프라 지출↑</span>
+        <span class="cal-ev ev-neu">T-Bill 정기 롤오버</span>
+        <span class="cal-ev ev-neu">FOMC 회의(통상)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">7??/div>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 吏湲됤넁</span>
-        <span class="cal-ev ev-in">硫붾뵒耳?는룸찓?붿??대뱶??/span>
-        <span class="cal-ev ev-in">?щ쫫 ?명봽??吏異쒋넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~7/28)</span>
+      <div class="cal-m"><div class="cal-mn">7월</div>
+        <span class="cal-ev ev-in">사회보장 지급↑</span>
+        <span class="cal-ev ev-in">메디케어·메디케이드↑</span>
+        <span class="cal-ev ev-in">여름 인프라 지출↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~7/28)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">8??/div>
-        <span class="cal-ev ev-out">T-Bill ?洹쒕え 諛쒗뻾??/span>
-        <span class="cal-ev ev-neu">QRA쨌TBAC 諛쒗몴</span>
-        <span class="cal-ev ev-in">?뺣? ?щ웾吏異쒋넁</span>
-        <span class="cal-ev ev-neu">??뒯? ?곗꽕(?곗?)</span>
+      <div class="cal-m"><div class="cal-mn">8월</div>
+        <span class="cal-ev ev-out">T-Bill 대규모 발행↓</span>
+        <span class="cal-ev ev-neu">QRA·TBAC 발표</span>
+        <span class="cal-ev ev-in">정부 재량지출↑</span>
+        <span class="cal-ev ev-neu">잭슨홀 연설(연준)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">9??/div>
-        <span class="cal-ev ev-out">3Q 異붿젙??(9/15)??/span>
-        <span class="cal-ev ev-in">?뚭퀎?곕룄 留덇컧 吏異쒋넁??/span>
-        <span class="cal-ev ev-out">援?콈 遺꾧린 諛쒗뻾??/span>
-        <span class="cal-ev ev-neu">?뚭퀎?곕룄 醫낅즺(9/30)</span>
+      <div class="cal-m"><div class="cal-mn">9월</div>
+        <span class="cal-ev ev-out">3Q 추정세 (9/15)↓</span>
+        <span class="cal-ev ev-in">회계연도 마감 지출↑↑</span>
+        <span class="cal-ev ev-out">국채 분기 발행↓</span>
+        <span class="cal-ev ev-neu">회계연도 종료(9/30)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">10??/div>
-        <span class="cal-ev ev-neu">???뚭퀎?곕룄 媛쒖떆(FY)</span>
-        <span class="cal-ev ev-neu">?곗옣 留덇컧(10/15)</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 COLA ?몄긽??/span>
-        <span class="cal-ev ev-neu">TIC ?곗씠??諛쒗몴(~18??</span>
+      <div class="cal-m"><div class="cal-mn">10월</div>
+        <span class="cal-ev ev-neu">새 회계연도 개시(FY)</span>
+        <span class="cal-ev ev-neu">연장 마감(10/15)</span>
+        <span class="cal-ev ev-in">사회보장 COLA 인상↑</span>
+        <span class="cal-ev ev-neu">TIC 데이터 발표(~18일)</span>
       </div>
-      <div class="cal-m"><div class="cal-mn">11??/div>
-        <span class="cal-ev ev-in">?곕쭚 ?뺣? 吏異쒋넁</span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣쨌蹂듭?吏異쒋넁</span>
-        <span class="cal-ev ev-neu">QRA 諛쒗몴(~10?붾쭚)</span>
-        <span class="cal-ev ev-neu">T-Bond 遺꾧린諛쒗뻾</span>
+      <div class="cal-m"><div class="cal-mn">11월</div>
+        <span class="cal-ev ev-in">연말 정부 지출↑</span>
+        <span class="cal-ev ev-in">사회보장·복지지출↑</span>
+        <span class="cal-ev ev-neu">QRA 발표(~10월말)</span>
+        <span class="cal-ev ev-neu">T-Bond 분기발행</span>
       </div>
-      <div class="cal-m hl-green"><div class="cal-mn green">12????/div>
-        <span class="cal-ev ev-in">吏異??쇳겕?묅넁 (?뚭퀎留덇컧)</span>
-        <span class="cal-ev ev-out">?곕쭚 ?멸툑 ?⑸???/span>
-        <span class="cal-ev ev-in">?ы쉶蹂댁옣 ?좎?湲됤넁</span>
-        <span class="cal-ev ev-neu">?곗? 理쒖쥌 FOMC</span>
+      <div class="cal-m hl-green"><div class="cal-mn green">12월 ★</div>
+        <span class="cal-ev ev-in">지출 피크↑↑ (회계마감)</span>
+        <span class="cal-ev ev-out">연말 세금 납부↓</span>
+        <span class="cal-ev ev-in">사회보장 선지급↑</span>
+        <span class="cal-ev ev-neu">연준 최종 FOMC</span>
       </div>
     </div>
   </div>
 
   <details class="collapsible">
-    <summary>?쒖옣 ?좊룞??湲곗? <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank" onclick="event.stopPropagation()">H.4.1 ??/a></summary>
+    <summary>시장 유동성 기준 <a class="src-link" href="https://www.federalreserve.gov/releases/h41/" target="_blank" onclick="event.stopPropagation()">H.4.1 ↗</a></summary>
     <div class="collapsible-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;line-height:1.8;">
         <div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?뱿 ?좊룞???좎엯 ?좏샇 (NL ?곸듅 議곌굔)</div>
-          <div class="dts-row"><span class="dts-name">WALCL 利앷?</span><span style="color:#34d399;font-size:11px;">Fed ?먯궛 留ㅼ엯 ???쒖쨷 ?먭툑??/span></div>
-          <div class="dts-row"><span class="dts-name">TGA 媛먯냼</span><span style="color:#34d399;font-size:11px;">?щТ遺 吏異??????以鍮꾧툑??/span></div>
-          <div class="dts-row"><span class="dts-name">RRP 媛먯냼</span><span style="color:#34d399;font-size:11px;">MMF ?먭툑 ?쒖옣 ?좎엯??/span></div>
-          <div class="dts-row"><span class="dts-name">遺梨꾪븳???묒긽</span><span style="color:#34d399;font-size:11px;">TGA ?뚯쭊 ??NL 湲됱긽??/span></div>
-          <div class="dts-row"><span class="dts-name">QE ?ш컻</span><span style="color:#34d399;font-size:11px;">WALCL ?뺣? ??吏곸젒 ?좊룞?기넁</span></div>
-          <div class="dts-row"><span class="dts-name">?섍툒 ?쒖쫵 (2~3??</span><span style="color:#34d399;font-size:11px;">TGA 媛먯냼쨌?뚮퉬??/span></div>
-          <div class="dts-row"><span class="dts-name">SRF쨌?뺤콉 ?異?/span><span style="color:#34d399;font-size:11px;">Fed 湲닿툒 ?좊룞??怨듦툒??/span></div>
-          <div class="dts-row"><span class="dts-name">?명솚蹂댁쑀 ?щ윭 ?섎쪟</span><span style="color:#34d399;font-size:11px;">?댁쇅 以묒븰????ㅼ솑?쇱씤??/span></div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📥 유동성 유입 신호 (NL 상승 조건)</div>
+          <div class="dts-row"><span class="dts-name">WALCL 증가</span><span style="color:#34d399;font-size:11px;">Fed 자산 매입 → 시중 자금↑</span></div>
+          <div class="dts-row"><span class="dts-name">TGA 감소</span><span style="color:#34d399;font-size:11px;">재무부 지출 → 은행 준비금↑</span></div>
+          <div class="dts-row"><span class="dts-name">RRP 감소</span><span style="color:#34d399;font-size:11px;">MMF 자금 시장 유입↑</span></div>
+          <div class="dts-row"><span class="dts-name">부채한도 협상</span><span style="color:#34d399;font-size:11px;">TGA 소진 → NL 급상승</span></div>
+          <div class="dts-row"><span class="dts-name">QE 재개</span><span style="color:#34d399;font-size:11px;">WALCL 확대 → 직접 유동성↑</span></div>
+          <div class="dts-row"><span class="dts-name">환급 시즌 (2~3월)</span><span style="color:#34d399;font-size:11px;">TGA 감소·소비↑</span></div>
+          <div class="dts-row"><span class="dts-name">SRF·정책 대출</span><span style="color:#34d399;font-size:11px;">Fed 긴급 유동성 공급↑</span></div>
+          <div class="dts-row"><span class="dts-name">외환보유 달러 환류</span><span style="color:#34d399;font-size:11px;">해외 중앙은행 스왑라인↑</span></div>
         </div>
         <div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">?뱾 ?좊룞???좎텧 ?좏샇 (NL ?섎씫 議곌굔)</div>
-          <div class="dts-row"><span class="dts-name">WALCL 媛먯냼 (QT)</span><span style="color:#f87171;font-size:11px;">Fed ?먯궛 異뺤냼 ??以鍮꾧툑 媛먯냼??/span></div>
-          <div class="dts-row"><span class="dts-name">TGA 湲됱쬆</span><span style="color:#f87171;font-size:11px;">?멸툑?⑸?쨌援?콈諛쒗뻾 ???쒖쨷 ?≪닔??/span></div>
-          <div class="dts-row"><span class="dts-name">RRP 利앷?</span><span style="color:#f87171;font-size:11px;">MMF媛 Fed???먭툑 ?덉튂??/span></div>
-          <div class="dts-row"><span class="dts-name">Tax Day (4??</span><span style="color:#f87171;font-size:11px;">TGA 湲됱쬆 ??NL ?④린 ?뺣컯??/span></div>
-          <div class="dts-row"><span class="dts-name">異붿젙???⑸?(遺꾧린)</span><span style="color:#f87171;font-size:11px;">1/15 쨌 4/15 쨌 6/15 쨌 9/15??/span></div>
-          <div class="dts-row"><span class="dts-name">T-Bill ?洹쒕え 諛쒗뻾</span><span style="color:#f87171;font-size:11px;">?쒖쨷 ?먭툑 援?콈濡??≪닔??/span></div>
-          <div class="dts-row"><span class="dts-name">遺梨꾪븳???댁냼 ??/span><span style="color:#f87171;font-size:11px;">TGA ?ъ땐????NL 湲됰씫??/span></div>
-          <div class="dts-row"><span class="dts-name">湲곗?湲덈━ ?몄긽</span><span style="color:#f87171;font-size:11px;">RRP 湲덈━ 留ㅻ젰?????먭툑?좎텧??/span></div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">📤 유동성 유출 신호 (NL 하락 조건)</div>
+          <div class="dts-row"><span class="dts-name">WALCL 감소 (QT)</span><span style="color:#f87171;font-size:11px;">Fed 자산 축소 → 준비금 감소↓</span></div>
+          <div class="dts-row"><span class="dts-name">TGA 급증</span><span style="color:#f87171;font-size:11px;">세금납부·국채발행 → 시중 흡수↓</span></div>
+          <div class="dts-row"><span class="dts-name">RRP 증가</span><span style="color:#f87171;font-size:11px;">MMF가 Fed에 자금 예치↓</span></div>
+          <div class="dts-row"><span class="dts-name">Tax Day (4월)</span><span style="color:#f87171;font-size:11px;">TGA 급증 → NL 단기 압박↓</span></div>
+          <div class="dts-row"><span class="dts-name">추정세 납부(분기)</span><span style="color:#f87171;font-size:11px;">1/15 · 4/15 · 6/15 · 9/15↓</span></div>
+          <div class="dts-row"><span class="dts-name">T-Bill 대규모 발행</span><span style="color:#f87171;font-size:11px;">시중 자금 국채로 흡수↓</span></div>
+          <div class="dts-row"><span class="dts-name">부채한도 해소 후</span><span style="color:#f87171;font-size:11px;">TGA 재충전 → NL 급락↓</span></div>
+          <div class="dts-row"><span class="dts-name">기준금리 인상</span><span style="color:#f87171;font-size:11px;">RRP 금리 매력↑ → 자금유출↓</span></div>
         </div>
       </div>
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.25);">
-        ?뮕 <b style="color:rgba(255,255,255,0.4);">?듭떖 怨듭떇:</b> NL = WALCL ??TGA ??RRP &nbsp;쨌&nbsp;
-        NL???곸듅?섎㈃ ?쒖쨷 ?좊룞??利앷? ???꾪뿕?먯궛 ?좏샇 寃쏀뼢 &nbsp;쨌&nbsp;
-        <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL??/a> &nbsp;
-        <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA??/a> &nbsp;
-        <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP??/a>
+        💡 <b style="color:rgba(255,255,255,0.4);">핵심 공식:</b> NL = WALCL − TGA − RRP &nbsp;·&nbsp;
+        NL이 상승하면 시중 유동성 증가 → 위험자산 선호 경향 &nbsp;·&nbsp;
+        <a href="https://fred.stlouisfed.org/series/WALCL" target="_blank" style="color:#60a5fa;text-decoration:none;">WALCL↗</a> &nbsp;
+        <a href="https://fred.stlouisfed.org/series/WDTGAL" target="_blank" style="color:#60a5fa;text-decoration:none;">TGA↗</a> &nbsp;
+        <a href="https://fred.stlouisfed.org/series/RRPONTSYD" target="_blank" style="color:#60a5fa;text-decoration:none;">RRP↗</a>
       </div>
     </div>
   </details>
 
   <details class="collapsible">
-    <summary>怨꾩궛 諛⑸쾿濡?/summary>
+    <summary>계산 방법론</summary>
     <div class="collapsible-body">
       <div class="method-box" style="margin-bottom:0;">
         <h3>1. Net Liquidity</h3>
-        <div class="formula">NL = WALCL ??TGA ??RRP</div>
-        <div class="desc"><b>WALCL</b>: Fed 珥앹옄????留롮쓣?섎줉 ?쒖쨷???덉씠 留롮씠 ?由??곹깭</div>
-        <div class="desc"><b>TGA 李④컧</b>: ?щТ遺媛 Fed???덉튂???꾧툑 ???쒖옣???由ъ? ?딆? ??/div>
-        <div class="desc"><b>RRP 李④컧</b>: MMF ?깆씠 Fed??留↔릿 ??젅???붿븸 ???쒖옣 諛뽰뿉 ?덈뒗 ??/div>
-        <div class="desc" style="margin-top:6px;">??Michael Howell(CrossBorder Capital), Lyn Alden ?깆씠 ?以묓솕. Fed ?좊룞?깆씠 ?ㅼ젣濡??쒖옣???쇰쭏????ㅼ엳?붿? 痢≪젙.</div>
-        <h3 style="margin-top:14px;">2. NL ?뚭? 怨듭젙媛移?/h3>
-        <div class="formula">SPX_FV = slope 횞 NL + intercept</div>
-        <div class="desc">2000?꾨????꾩옱源뚯? ?쇨컙 ?곗씠?곕줈 ?좏삎?뚭?. NL????SPX 怨듭젙媛移섃넁 愿怨?紐⑤뜽留?</div>
-        {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R짼={{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
-        <h3 style="margin-top:14px;">3. 愿대━??/h3>
-        <div class="formula">愿대━??= (SPX?꾩옱媛 ??FV) / FV 횞 100 (%)</div>
-        <div class="desc">?묒닔(+): 怨좏룊媛 &nbsp;|&nbsp; ?뚯닔(??: ??됯?</div>
-        <div class="warn">??NL?봖PX ?곴?愿怨?R짼??.6~0.8)???쒕낯 湲곌컙???섏〈?섎ŉ, ?멸낵愿怨꾧? ?꾨땶 ?곴?愿怨꾩엯?덈떎. ?덈???FV蹂대떎 <b>諛⑺뼢?굿룰눼由?異붿꽭</b> ?꾩＜濡??쒖슜 沅뚯옣.</div>
+        <div class="formula">NL = WALCL − TGA − RRP</div>
+        <div class="desc"><b>WALCL</b>: Fed 총자산 — 많을수록 시중에 돈이 많이 풀린 상태</div>
+        <div class="desc"><b>TGA 차감</b>: 재무부가 Fed에 예치한 현금 — 시장에 풀리지 않은 돈</div>
+        <div class="desc"><b>RRP 차감</b>: MMF 등이 Fed에 맡긴 역레포 잔액 — 시장 밖에 있는 돈</div>
+        <div class="desc" style="margin-top:6px;">→ Michael Howell(CrossBorder Capital), Lyn Alden 등이 대중화. Fed 유동성이 실제로 시장에 얼마나 풀려있는지 측정.</div>
+        <h3 style="margin-top:14px;">2. NL 회귀 공정가치</h3>
+        <div class="formula">SPX_FV = slope × NL + intercept</div>
+        <div class="desc">2000년부터 현재까지 일간 데이터로 선형회귀. NL↑ → SPX 공정가치↑ 관계 모델링.</div>
+        {% if model_info %}<div class="model-info">slope={{ model_info.slope }} | intercept={{ model_info.intercept }} | R²={{ model_info.r2 }} | n={{ model_info.n }}</div>{% endif %}
+        <h3 style="margin-top:14px;">3. 괴리율</h3>
+        <div class="formula">괴리율 = (SPX현재가 − FV) / FV × 100 (%)</div>
+        <div class="desc">양수(+): 고평가 &nbsp;|&nbsp; 음수(−): 저평가</div>
+        <div class="warn">※ NL↔SPX 상관관계(R²≈0.6~0.8)는 표본 기간에 의존하며, 인과관계가 아닌 상관관계입니다. 절대적 FV보다 <b>방향성·괴리 추세</b> 위주로 활용 권장.</div>
       </div>
     </div>
   </details>
@@ -1756,16 +1756,16 @@ HTML_TEMPLATE = """
 
 <div id="tab-tic" class="tab-content">
 {% if tic_error %}
-  <div class="error">TIC ?곗씠???ㅻ쪟: {{ tic_error }}</div>
+  <div class="error">TIC 데이터 오류: {{ tic_error }}</div>
 {% elif not tic_chart_html %}
-  <div class="loading">TIC ?곗씠??濡쒕뵫 以?..</div>
+  <div class="loading">TIC 데이터 로딩 중...</div>
 {% else %}
 
   <div class="chart-card">
     <div class="chart-header">
       <div>
-        <div class="chart-title">二쇱슂援?誘멸뎅梨?蹂댁쑀????Monthly (2000?뱎resent)
-          <a class="src-link" href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank">TIC ??/a>
+        <div class="chart-title">주요국 미국채 보유량 — Monthly (2000–present)
+          <a class="src-link" href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank">TIC ↗</a>
         </div>
         <div class="legend">
           {% for c in tic_legend %}
@@ -1773,15 +1773,15 @@ HTML_TEMPLATE = """
           {% endfor %}
         </div>
       </div>
-      <div class="zoom-btns"><button onclick="zoomChart('ctic','in')">+</button><button onclick="zoomChart('ctic','out')">??/button><button onclick="resetChart('ctic')">??/button></div>
+      <div class="zoom-btns"><button onclick="zoomChart('ctic','in')">+</button><button onclick="zoomChart('ctic','out')">−</button><button onclick="resetChart('ctic')">↺</button></div>
     </div>
     <div id="ctic" style="padding:4px;">{{ tic_chart_html | safe }}</div>
   </div>
 
-  <div class="section-title">理쒖떊 蹂댁쑀???쒖쐞 <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ tic_updated_at }} 湲곗? 쨌 ??6二??꾪뻾 諛쒗몴</span></div>
+  <div class="section-title">최신 보유량 순위 <span style="font-weight:400;color:rgba(255,255,255,0.2);font-size:10px;">{{ tic_updated_at }} 기준 · 약 6주 후행 발표</span></div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>援??</th><th style="text-align:right;">蹂댁쑀??(B)</th><th style="text-align:right;">?꾩썡驪?/th><th style="text-align:right;">鍮꾩쨷</th></tr></thead>
+      <thead><tr><th>#</th><th>국가</th><th style="text-align:right;">보유량 (B)</th><th style="text-align:right;">전월比</th><th style="text-align:right;">비중</th></tr></thead>
       <tbody>
         {% for row in tic_table %}
         <tr>
@@ -1802,28 +1802,26 @@ HTML_TEMPLATE = """
   </div>
 
   <div class="info-box">
-    <b style="color:#cc0000;">TIC ?곗씠?곕??</b><br>
-    Treasury International Capital ??誘??щТ遺媛 留ㅼ썡 諛쒗몴?섎뒗 ?멸뎅?몄쓽 誘멸뎅梨?蹂댁쑀 ?꾪솴. 以묎뎅쨌?쇰낯??蹂댁쑀??蹂?붾뒗 ?щ윭 ?④텒 諛?誘멸뎅梨?湲덈━???곹뼢??誘몄튂???듭떖 吏??<br><br>
-    <b style="color:#555;">諛쒗몴 ?쇱젙 (留ㅼ썡 18?쇨꼍):</b><br>
-    &nbsp;쨌 1???곗씠????3??18??諛쒗몴<br>
-    &nbsp;쨌 2???곗씠????4??18??諛쒗몴<br>
-    &nbsp;쨌 3???곗씠????5??18??諛쒗몴<br>
-    &nbsp;쨌 <i>?댄븯 ?숈씪 ????긽 ??6二??꾪뻾</i><br><br>
-    <b style="color:#555;">二쇱쓽:</b> 蹂댁쑀?됱? custodian 湲곗? ??以묎뎅 ?ъ옄?먭? 踰④린????됱뿉 ?덊긽 ??踰④린?먮줈 吏묎퀎. 猷⑹뀍遺瑜댄겕쨌耳?대㎤쨌踰④린????湲덉쑖 ?덈툕???믪? ?섏튂???ㅼ젣 ?대떦援?씠 ?꾨땶 ??援??먭툑??媛?μ꽦???믪쓬.
+    <b style="color:#cc0000;">TIC 데이터란?</b><br>
+    Treasury International Capital — 미 재무부가 매월 발표하는 외국인의 미국채 보유 현황. 중국·일본의 보유량 변화는 달러 패권 및 미국채 금리에 영향을 미치는 핵심 지표.<br><br>
+    <b style="color:#555;">발표 일정 (매월 18일경):</b><br>
+    &nbsp;· 1월 데이터 → 3월 18일 발표<br>
+    &nbsp;· 2월 데이터 → 4월 18일 발표<br>
+    &nbsp;· 3월 데이터 → 5월 18일 발표<br>
+    &nbsp;· <i>이하 동일 — 항상 약 6주 후행</i><br><br>
+    <b style="color:#555;">주의:</b> 보유량은 custodian 기준 — 중국 투자자가 벨기에 은행에 예탁 시 벨기에로 집계. 룩셈부르크·케이맨·벨기에 등 금융 허브의 높은 수치는 실제 해당국이 아닌 제3국 자금일 가능성이 높음.
   </div>
 
 {% endif %}
 </div>
 
   <div class="footer">
-    Net Liquidity: <a href="https://fred.stlouisfed.org" target="_blank" style="color:#60a5fa;text-decoration:none;">FRED</a> (WALCL쨌WDTGAL쨌RRPONTSYD쨌SP500) &nbsp;|&nbsp;
-    TGA ?ъ슜泥? <a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" style="color:#60a5fa;text-decoration:none;">fiscaldata.treasury.gov</a> &nbsp;|&nbsp;
-    援??蹂?誘멸뎅梨? <a href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank" style="color:#60a5fa;text-decoration:none;">U.S. Treasury TIC</a> &nbsp;|&nbsp; 2000?뱎resent
+    Net Liquidity: <a href="https://fred.stlouisfed.org" target="_blank" style="color:#60a5fa;text-decoration:none;">FRED</a> (WALCL·WDTGAL·RRPONTSYD·SP500) &nbsp;|&nbsp;
+    TGA 사용처: <a href="https://fiscaldata.treasury.gov/datasets/daily-treasury-statement/" target="_blank" style="color:#60a5fa;text-decoration:none;">fiscaldata.treasury.gov</a> &nbsp;|&nbsp;
+    국가별 미국채: <a href="https://home.treasury.gov/data/treasury-international-capital-tic-system" target="_blank" style="color:#60a5fa;text-decoration:none;">U.S. Treasury TIC</a> &nbsp;|&nbsp; 2000–present
   </div>
 </div>
 </body>
 </html>
 """
-
-
 
