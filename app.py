@@ -977,7 +977,7 @@ def fetch_dts_bulk(days=60):
         f"{base}/accounting/dts/deposits_withdrawals_operating_cash"
         f"?fields=record_date,transaction_catg,transaction_type,transaction_today_amt"
         f"&filter=record_date:gte:{start}"
-        f"&sort=-record_date&page[size]=1000"
+        f"&sort=-record_date&page%5Bsize%5D=1000"
     )
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     r = req.get(url, headers=headers, timeout=60)
