@@ -968,6 +968,81 @@ def cron_tic():
 
 
 @app.route("/api/cron/dts")
+def fetch_dts_bulk(days=60):
+    base = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1"
+    EXCLUDE_CATG = {"Total Deposits", "Total Withdrawals", "Total", "Subtotal", "Grand Total", ""}
+    import datetime as _dt
+    start = (_dt.date.today() - _dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    url = (
+        f"{base}/accounting/dts/deposits_withdrawals_operating_cash"
+        f"?fields=record_date,transaction_catg,transaction_type,transaction_today_amt"
+        f"&filter=record_date:gte:{start}"
+        f"&sort=-record_date&page[size]=1000"
+    )
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+    r = req.get(url, headers=headers, timeout=60)
+    r.raise_for_status()
+    data = r.json().get("data", [])
+    if not data:
+        raise ValueError("DTS bulk no data")
+    from collections import defaultdict
+    by_date = defaultdict(list)
+    for row in data:
+        by_date[row["record_date"]].append(row)
+    def fmt(v):
+        v = abs(float(v))
+        if v >= 1000: return f"{v/1000:.1f}B"
+        return f"{v:.0f}M"
+    history = []
+    for date in sorted(by_date.keys(), reverse=True):
+        rows = by_date[date]
+        dep, wit, bal_dep, bal_wit = [], [], 0.0, 0.0
+        for row in rows:
+            catg = row.get("transaction_catg", "").strip()
+            amt_raw = float(row.get("transaction_today_amt", 0) or 0)
+            if catg in EXCLUDE_CATG or amt_raw == 0:
+                continue
+            if row["transaction_type"] == "Deposits":
+                dep.append({"name": catg, "amt": fmt(amt_raw)})
+                bal_dep += amt_raw
+            elif row["transaction_type"] == "Withdrawals":
+                wit.append({"name": catg, "amt": fmt(amt_raw)})
+                bal_wit += amt_raw
+        dep = sorted(dep, key=lambda x: float(x["amt"].replace("B","e3").replace("M","") or 0), reverse=True)[:8]
+        wit = sorted(wit, key=lambda x: float(x["amt"].replace("B","e3").replace("M","") or 0), reverse=True)[:8]
+        net = bal_dep - bal_wit
+        bal = [
+            {"name": "Total Deposits", "amt": fmt(bal_dep), "pos": True},
+            {"name": "Total Withdrawals", "amt": fmt(bal_wit), "pos": False},
+            {"name": f"Net ({'in' if net>=0 else 'out'})", "amt": fmt(net), "pos": net >= 0},
+        ]
+        history.append({"date": date, "deposits": dep, "withdrawals": wit, "balance": bal})
+    return history
+
+
+def run_bulk_dts():
+    try:
+        history = fetch_dts_bulk(60)
+        db_set("dts_history", history)
+        monthly_summary = _build_monthly_summary(history)
+        db_set("dts_monthly_summary", monthly_summary)
+        if history:
+            db_set("dts_date", history[0]["date"])
+        db_set("dts_error", None)
+        print(f"DTS bulk done: {len(history)} days")
+    except Exception as e:
+        db_set("dts_error", str(e))
+        print(f"DTS bulk error: {e}")
+
+
+@app.route("/api/cron/dts-bulk")
+def cron_dts_bulk():
+    secret = request.headers.get("Authorization", "")
+    if CRON_SECRET and secret != f"Bearer {CRON_SECRET}":
+        return jsonify({"error": "unauthorized"}), 401
+    threading.Thread(target=run_bulk_dts, daemon=True).start()
+    return jsonify({"status": "started"})
+
 def cron_dts():
     secret = request.headers.get("Authorization", "")
     if CRON_SECRET and secret != f"Bearer {CRON_SECRET}":
