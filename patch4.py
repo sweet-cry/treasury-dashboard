@@ -1,0 +1,6 @@
+﻿content = open('app.py', encoding='utf-8').read()
+old = '    # yfinance fallback\n    try:\n        import yfinance as yf\n        yf_spx = yf.download(\"^GSPC\", start=START_DATE, progress=False, auto_adjust=True)[\"Close\"]\n        yf_spx.index = __import__(\"pandas\").to_datetime(yf_spx.index).tz_localize(None)\n        yf_spx.name = \"SP500\"\n        missing = yf_spx.index.difference(spx_d.index)\n        if len(missing) > 0:\n            spx_d = __import__(\"pandas\").concat([spx_d, yf_spx.loc[missing]]).sort_index()\n    except Exception:\n        pass'
+new = '    # yfinance fallback\n    try:\n        import yfinance as yf\n        yf_spx = yf.download(\"^GSPC\", start=START_DATE, progress=False, auto_adjust=True)[\"Close\"]\n        yf_spx.index = __import__(\"pandas\").to_datetime(yf_spx.index).tz_localize(None)\n        yf_spx.name = \"SP500\"\n        missing = yf_spx.index.difference(spx_d.index)\n        if len(missing) > 0:\n            spx_d = __import__(\"pandas\").concat([spx_d, yf_spx.loc[missing]]).sort_index()\n    except Exception as yf_err:\n        db_set(\"yf_error\", str(yf_err))'
+assert old in content, "MATCH FAILED"
+open('app.py', 'w', encoding='utf-8').write(content.replace(old, new, 1))
+print('OK')

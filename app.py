@@ -1060,6 +1060,54 @@ def cron_qra():
     return jsonify({"status": "started"})
 
 
+@app.route("/api/qra")
+def api_qra():
+    """QRA 경매 데이터 — 프론트 /api/qra 엔드포인트"""
+    cached = db_get("qra_data")
+    if not cached:
+        # 캐시 없으면 실시간 fetch
+        try:
+            cached = fetch_qra_data()
+            db_set("qra_data", cached)
+        except Exception as e:
+            return jsonify({"error": str(e), "data": []}), 500
+
+    auctions = cached.get("auctions", [])
+    # 프론트가 기대하는 필드명으로 변환
+    # 백엔드: date, stype, term, amt(B$문자열)
+    # 프론트: auction_date, security_type, security_term, offering_amt(숫자,단위B$→억달러)
+    data = []
+    for a in auctions:
+        try:
+            offering = float(a.get("amt", 0)) * 1e9  # B$ → 달러
+        except Exception:
+            offering = 0
+        # stype 역매핑: T-Bill→Bill, Note→Note, Bond→Bond
+        stype_raw = a.get("stype", "")
+        stype_map = {"T-Bill": "Bill", "Note": "Note", "Bond": "Bond", "TIPS": "TIPS", "FRN": "FRN"}
+        security_type = stype_map.get(stype_raw, stype_raw)
+        data.append({
+            "auction_date":   a.get("date", ""),
+            "security_type":  security_type,
+            "security_term":  a.get("term", ""),
+            "offering_amt":   str(offering) if offering else "null",
+            "btc":            a.get("btc", "—"),
+            "rate":           a.get("rate", "—"),
+        })
+
+    return jsonify({
+        "data":       data,
+        "next_qra":   cached.get("next_qra", ""),
+        "tbill_30d":  cached.get("tbill_30d", "—"),
+        "coupon_30d": cached.get("coupon_30d", "—"),
+        "total_30d":  cached.get("total_30d", "—"),
+        "avg_btc":    cached.get("avg_btc", "—"),
+        "breakdown":  cached.get("breakdown", []),
+        "schedule":   cached.get("schedule", []),
+        "updated_at": cached.get("start_date", ""),
+    })
+
+
 @app.route("/api/cron/all")
 def cron_all():
     secret = request.headers.get("Authorization", "")
