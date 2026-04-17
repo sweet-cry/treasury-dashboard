@@ -985,22 +985,45 @@ def cron_qra():
     return jsonify({"status": "started"})
 
 
+@app.route("/api/qra/debug")
+def api_qra_debug():
+    """TreasuryDirect raw 필드 확인용 디버그 엔드포인트"""
+    import requests as req2
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    end   = now.strftime("%Y-%m-%d")
+    url = (
+        "https://www.treasurydirect.gov/TA_WS/securities/auctioned"
+        f"?format=json&dateFieldName=auctionDate&startDate={start}&endDate={end}"
+    )
+    r = req2.get(url, timeout=30)
+    raw = r.json()
+    if raw:
+        return jsonify({"count": len(raw), "sample": raw[0], "fields": list(raw[0].keys())})
+    return jsonify({"count": 0})
+
+
 @app.route("/api/qra")
 def api_qra():
     """QRA 경매 데이터 — 프론트 /api/qra 엔드포인트"""
+    # 항상 fresh fetch (캐시 우선하되 30분 이상 경과 시 갱신)
+    import time
     cached = db_get("qra_data")
-    # 캐시 없거나 auctions 비어있으면 실시간 fetch
+    cached_ts = db_get("qra_data_ts") or 0
+    age = time.time() - float(cached_ts)
     auctions_check = (cached or {}).get("auctions", [])
-    has_valid = any(
-        a.get("amt") and float(a.get("amt", 0) or 0) > 0
-        for a in auctions_check
-    )
-    if not cached or not auctions_check or not has_valid:
+    has_valid = any(float(a.get("amt", 0) or 0) > 0 for a in auctions_check)
+    if not cached or not has_valid or age > 1800:
         try:
             cached = fetch_qra_data()
             db_set("qra_data", cached)
+            db_set("qra_data_ts", str(time.time()))
         except Exception as e:
-            return jsonify({"error": str(e), "data": []}), 500
+            if cached:
+                pass  # 캐시라도 반환
+            else:
+                return jsonify({"error": str(e), "data": []}), 500
 
     auctions = cached.get("auctions", [])
     # 프론트가 기대하는 필드명으로 변환
