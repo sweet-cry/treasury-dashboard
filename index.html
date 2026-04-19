@@ -192,6 +192,15 @@ tr:hover td{background:var(--surf2)}
   .sp-grid{grid-template-columns:1fr}
   .cd{height:24px;font-size:8px}
 }
+
+/* SRF 신호등 */
+#srf-light.green{background:#3fb950;box-shadow:0 0 12px rgba(63,185,80,0.4)}
+#srf-light.yellow{background:#d29922;box-shadow:0 0 12px rgba(210,153,34,0.4)}
+#srf-light.red{background:#f85149;box-shadow:0 0 12px rgba(248,81,73,0.4)}
+/* shock / lclor 토글 버튼 */
+.shock-btn{font-size:11px;padding:5px 10px;border-radius:4px;border:1px solid var(--brd);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.shock-btn.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.shock-btn:hover{color:var(--tx)}
 </style>
 </head>
 <body>
@@ -222,11 +231,10 @@ tr:hover td{background:var(--surf2)}
 
   <div class="tabs">
     <button class="tab on" onclick="sw('nl',this)">Net Liquidity</button>
-    <button class="tab" onclick="sw('rates',this)">단기금리</button>
+    <button class="tab" onclick="sw('rates',this)">금리·자금시장</button>
     <button class="tab" onclick="sw('h41',this)">H.4.1</button>
-    <button class="tab" onclick="sw('m2',this)">M2 · 준비금</button>
-    <button class="tab" onclick="sw('dts',this)">DTS</button>
-    <button class="tab" onclick="sw('qra',this)">QRA</button>
+    <button class="tab" onclick="sw('m2',this)">통화·준비금</button>
+    <button class="tab" onclick="sw('dts',this)">국채발행</button>
     <button class="tab" onclick="sw('tic',this)">TIC</button>
     <button class="tab" onclick="sw('cal',this)">캘린더</button>
   </div>
@@ -328,6 +336,42 @@ tr:hover td{background:var(--surf2)}
     </div>
   </div>
 
+  <!-- ── SRF (금리·자금시장 하단) ── -->
+  <div class="stitle" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--brd)">Repo 경색 조기감지 (SRF)</div>
+  <div class="tdesc-body" style="font-size:12px;color:var(--muted);margin-bottom:14px">SRF 이용 발생 또는 SOFR이 IORB를 상향 돌파 시 준비금 희소성 신호. 2021년 7월 상설화 이후 평시 $0 유지.</div>
+  <!-- 신호등 -->
+  <div id="srf-signal" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg2);border-radius:8px;margin-bottom:14px">
+    <div id="srf-light" style="width:28px;height:28px;border-radius:50%;background:var(--muted);flex-shrink:0"></div>
+    <div>
+      <div id="srf-level" style="font-size:13px;font-weight:500;color:var(--tx)">—</div>
+      <div id="srf-reason" style="font-size:11px;color:var(--muted)">로딩 중...</div>
+    </div>
+  </div>
+  <!-- 카드 -->
+  <div class="cards">
+    <div class="card"><div class="cl">SRF 일간 <button class="ib" onclick="tip('srf-daily',this)">i</button></div><div class="cv" id="c-srf-daily">—</div><div class="cs">RPONTSYD · $B</div></div>
+    <div class="card"><div class="cl">SRF 7일 누적</div><div class="cv" id="c-srf-7d">—</div><div class="cs">$B</div></div>
+    <div class="card"><div class="cl">SOFR − IORB <button class="ib" onclick="tip('sofr-iorb-bp',this)">i</button></div><div class="cv" id="c-sofr-iorb-bp">—</div><div class="cs">bp · 음수=건강</div></div>
+    <div class="card"><div class="cl">SOFR99 갭</div><div class="cv" id="c-sofr99-gap">—</div><div class="cs">bp · 꼬리압력</div></div>
+  </div>
+  <!-- 스프레드 차트 -->
+  <div class="ct" style="margin-top:18px">SOFR − IORB 스프레드 (90일)</div>
+  <div class="leg"><span><span class="ld" style="background:#58a6ff"></span>SOFR-IORB (bp)</span></div>
+  <canvas id="srfSpreadChart" style="max-height:180px"></canvas>
+  <!-- SRF 이용 차트 -->
+  <div class="ct" style="margin-top:14px">SRF 일일 이용액 (90일)</div>
+  <canvas id="srfUtilChart" style="max-height:140px"></canvas>
+  <!-- 쇼크 비교 -->
+  <div class="ct" style="margin-top:18px">과거 repo 쇼크 비교 (쇼크일 ±30일 SOFR-IORB)</div>
+  <div style="display:flex;gap:6px;margin:8px 0 10px;flex-wrap:wrap">
+    <button class="shock-btn on" data-shock="all" onclick="switchShock('all',this)">전체</button>
+    <button class="shock-btn" data-shock="2019-09" onclick="switchShock('2019-09',this)">2019-09 rate spike</button>
+    <button class="shock-btn" data-shock="2020-03" onclick="switchShock('2020-03',this)">2020-03 COVID</button>
+    <button class="shock-btn" data-shock="2023-03" onclick="switchShock('2023-03',this)">2023-03 SVB</button>
+  </div>
+  <canvas id="srfShockChart" style="max-height:200px"></canvas>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px">day 0 = 쇼크일 기준. 2019-09-17 SOFR +282bp 스파이크가 SRF 상설화 계기.</div>
+
   <!-- ── H41 ── -->
   <div id="t-h41" style="display:none">
 
@@ -378,10 +422,41 @@ tr:hover td{background:var(--surf2)}
     </div>
   </div>
 
+  <!-- ── LCLoR (통화·준비금 하단) ── -->
+  <div class="stitle" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--brd)">LCLoR — 준비금 희소성 근접도</div>
+  <div class="tdesc-body" style="font-size:12px;color:var(--muted);margin-bottom:14px">준비금이 '최저 편안한 수준(LCLoR)'에 근접할수록 QT 종료 압박 증가. NY Fed Afonso et al. 프레임워크.</div>
+  <!-- 모드 토글 -->
+  <div style="display:flex;gap:6px;margin-bottom:14px">
+    <button class="shock-btn on" id="lclor-mode-fed" onclick="switchLCLoR('fed_comm',this)">Fed 기준 ($2.8~3.2T)</button>
+    <button class="shock-btn" id="lclor-mode-gdp" onclick="switchLCLoR('reserves_gdp',this)">Reserves/GDP 8%</button>
+  </div>
+  <!-- 게이지 + 수치 -->
+  <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px;flex-wrap:wrap">
+    <svg id="lclor-gauge" viewBox="0 0 200 110" style="width:200px;height:110px;flex-shrink:0">
+      <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#30363d" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 20 100 A 80 80 0 0 1 72 33" fill="none" stroke="#3fb950" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 72 33 A 80 80 0 0 1 128 33" fill="none" stroke="#d29922" stroke-width="18"/>
+      <path d="M 128 33 A 80 80 0 0 1 163 72" fill="none" stroke="#e3793a" stroke-width="18"/>
+      <path d="M 163 72 A 80 80 0 0 1 180 100" fill="none" stroke="#f85149" stroke-width="18" stroke-linecap="round"/>
+      <line id="lclor-needle" x1="100" y1="100" x2="100" y2="28" stroke="var(--tx)" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="100" cy="100" r="5" fill="var(--tx)"/>
+    </svg>
+    <div>
+      <div style="font-size:36px;font-weight:500;color:var(--tx)" id="lclor-prox">—</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:2px" id="lclor-zone">로딩 중</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px" id="lclor-detail">—</div>
+    </div>
+  </div>
+  <!-- Reserves/GDP 차트 -->
+  <div class="ct">Reserves/GDP 추이 (24개월)</div>
+  <div class="leg"><span><span class="ld" style="background:#58a6ff"></span>Reserves/GDP %</span><span><span class="ld" style="background:#3fb950"></span>Reserves ($B, 우축)</span></div>
+  <canvas id="lclorChart" style="max-height:180px"></canvas>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px">빨간 점선 = 8% scarce 기준선. Abundant(0~40%) · Ample(40~70%) · Approaching(70~85%) · Scarce(85%+)</div>
+
   <!-- ── DTS ── -->
   <div id="t-dts" style="display:none">
 
-  <div class="tdesc"><div class="tdesc-hdr"><div class="tdesc-icon">DTS</div><div><div class="tdesc-title">DTS — 일별 재정 세수·지출</div><div class="tdesc-src">fiscaldata.treasury.gov 일간</div></div></div><div class="tdesc-body">일별 TGA 입출금 명세. 세수(Deposits)와 지출(Withdrawals)의 차이가 TGA를 결정하고, 이것이 NL에 직접 영향. 4월 Tax Day·9월 분기세 세수 급증, 월초 이자·사회보장 지출 집중 패턴 반복. 달력 기반 계절성 파악이 NL 방향 예측에 핵심.</div><div class="tdesc-tags"><span class="tdesc-tag r">Tax Day = 세수 급증</span><span class="tdesc-tag a">월초 = 지출 집중</span><span class="tdesc-tag b">순수지 양수 = NL↓</span><span class="tdesc-tag g">달력 패턴 중요</span><span class="tdesc-tag ">부채한도와 연동</span></div><div class="tdesc-rels"><span><span style="color:#f85149">→</span> 세수 급증 후 TGA 증가 → NL 하락 압력</span><span><span style="color:#3fb950">→</span> 지출 집중기 = NL 상승 기회</span><span><span style="color:#d29922">→</span> 재정적자 확대 = 국채 추가 발행</span></div></div>
+  <div class="tdesc"><div class="tdesc-hdr"><div class="tdesc-icon">DTS</div><div><div class="tdesc-title">국채발행 — 재정 세수·지출 + QRA</div><div class="tdesc-src">fiscaldata.treasury.gov 일간</div></div></div><div class="tdesc-body">일별 TGA 입출금 명세. 세수(Deposits)와 지출(Withdrawals)의 차이가 TGA를 결정하고, 이것이 NL에 직접 영향. 4월 Tax Day·9월 분기세 세수 급증, 월초 이자·사회보장 지출 집중 패턴 반복. 달력 기반 계절성 파악이 NL 방향 예측에 핵심.</div><div class="tdesc-tags"><span class="tdesc-tag r">Tax Day = 세수 급증</span><span class="tdesc-tag a">월초 = 지출 집중</span><span class="tdesc-tag b">순수지 양수 = NL↓</span><span class="tdesc-tag g">달력 패턴 중요</span><span class="tdesc-tag ">부채한도와 연동</span></div><div class="tdesc-rels"><span><span style="color:#f85149">→</span> 세수 급증 후 TGA 증가 → NL 하락 압력</span><span><span style="color:#3fb950">→</span> 지출 집중기 = NL 상승 기회</span><span><span style="color:#d29922">→</span> 재정적자 확대 = 국채 추가 발행</span></div></div>
     <div class="sec">
       <div class="stitle">DTS — 일별 세수 · 지출</div>
       <div class="cards">
@@ -412,8 +487,8 @@ tr:hover td{background:var(--surf2)}
     </div>
   </div>
 
-  <!-- ── QRA ── -->
-  <div id="t-qra" style="display:none">
+  <!-- ── QRA (국채발행 하단) ── -->
+  <div class="stitle" style="margin-top:28px;padding-top:20px;border-top:1px solid var(--brd)">QRA — 분기 국채 발행 계획</div>
 
   <div class="tdesc"><div class="tdesc-hdr"><div class="tdesc-icon">QRA</div><div><div class="tdesc-title">QRA — 분기 국채 발행 계획</div><div class="tdesc-src">fiscaldata.treasury.gov · 분기 발표</div></div></div><div class="tdesc-body">재무부 분기 차입 계획. T-Bill 위주 발행 시 MMF RRP 자금이 T-Bill로 이동 → NL 영향 중립. 쿠폰채(Notes·Bonds) 위주 시 은행 준비금 직접 흡수 → NL 감소 압박. 발행 구성 비율과 총액이 향후 NL 경로를 결정하는 핵심 변수.</div><div class="tdesc-tags"><span class="tdesc-tag g">T-Bill 위주 = NL 중립</span><span class="tdesc-tag r">쿠폰채 위주 = NL↓</span><span class="tdesc-tag a">총 발행 $20T+/년</span><span class="tdesc-tag b">분기 발표 = 시장 이벤트</span><span class="tdesc-tag ">재정적자 반영</span></div><div class="tdesc-rels"><span><span style="color:#3fb950">→</span> T-Bill 비중 확대 = 유동성 압박 완화</span><span><span style="color:#f85149">→</span> 쿠폰채 급증 = 준비금 흡수 → 금리 상승</span><span><span style="color:#d29922">→</span> QRA 발표일 = 시장 변동성 주의</span></div></div>
     <div class="sec">
@@ -443,7 +518,8 @@ tr:hover td{background:var(--surf2)}
         <tbody id="qraTbody"><tr><td colspan="4" class="loading">로딩 중...</td></tr></tbody>
       </table></div>
     </div>
-  </div>
+  
+
 
   <!-- ── TIC ── -->
   <div id="t-tic" style="display:none">
@@ -519,7 +595,191 @@ tr:hover td{background:var(--surf2)}
 
 <div class="tip" id="tipEl"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
+/* ═══════════════════════ SRF ═══════════════════════ */
+let _srfData=null, _shockData=null;
+let srfSpreadChartObj=null, srfUtilChartObj=null, srfShockChartObj=null;
+
+async function loadRatesSRF(){
+  if(_srfData)return;
+  const FRED_KEY=window.FRED_KEY||'';
+  const end=new Date(),start=new Date();
+  start.setDate(end.getDate()-120);
+  const s=start.toISOString().slice(0,10),e=end.toISOString().slice(0,10);
+  async function f(id){
+    const u=`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${FRED_KEY}&file_type=json&observation_start=${s}&observation_end=${e}`;
+    try{const r=await fetch(u);const d=await r.json();
+      return (d.observations||[]).filter(x=>x.value!=='.').map(x=>({date:x.date,v:parseFloat(x.value)}));
+    }catch{return [];}
+  }
+  const [srf,sofr,iorb,sofr99,dw]=await Promise.all([
+    f('RPONTSYD'),f('SOFR'),f('IORB'),f('SOFR99'),f('DISCBORR')
+  ]);
+  const iorbMap=Object.fromEntries(iorb.map(x=>[x.date,x.v]));
+  const spread=sofr.filter(x=>iorbMap[x.date]!=null).map(x=>({date:x.date,bp:((x.v-iorbMap[x.date])*100).toFixed(2)*1}));
+  const srf_last=srf.length?srf[srf.length-1].v/1000:0;
+  const sofr_last=sofr.length?sofr[sofr.length-1].v:null;
+  const iorb_last=iorb.length?iorb[iorb.length-1].v:null;
+  const si_bp=sofr_last!=null&&iorb_last!=null?((sofr_last-iorb_last)*100).toFixed(1)*1:null;
+  const s99_last=sofr99.length?sofr99[sofr99.length-1].v:null;
+  const s99_gap=s99_last!=null&&sofr_last!=null?((s99_last-sofr_last)*100).toFixed(1)*1:null;
+  const srf7=srf.slice(-7).reduce((a,x)=>a+x.v,0)/1000;
+  _srfData={srf,sofr,iorb,spread,srf_last,si_bp,s99_gap,srf7,dw};
+  // 신호등
+  let lv='green',reason='SRF 미이용, 스프레드 여유 — 정상';
+  if(srf_last>10||(si_bp!=null&&si_bp>5)){lv='red';reason='SRF 대규모 이용 또는 SOFR-IORB 양수 — 경고';}
+  else if(srf_last>0||(si_bp!=null&&si_bp>-3)){lv='yellow';reason='SRF 잔액 발생 또는 스프레드 축소 — 주의';}
+  const light=document.getElementById('srf-light');
+  if(light){light.className='';light.classList.add(lv);}
+  const lvEl=document.getElementById('srf-level');const rsEl=document.getElementById('srf-reason');
+  if(lvEl)lvEl.textContent=lv.toUpperCase();
+  if(rsEl)rsEl.textContent=reason;
+  // 카드
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('c-srf-daily',srf_last.toFixed(2)+' B');
+  set('c-srf-7d',srf7.toFixed(2)+' B');
+  set('c-sofr-iorb-bp',si_bp!=null?(si_bp>0?'+':'')+si_bp+'bp':'—');
+  set('c-sofr99-gap',s99_gap!=null?(s99_gap>0?'+':'')+s99_gap+'bp':'—');
+  // 스프레드 차트
+  const tail90=spread.slice(-90);
+  const sctx=document.getElementById('srfSpreadChart');
+  if(sctx){
+    if(srfSpreadChartObj)srfSpreadChartObj.destroy();
+    srfSpreadChartObj=new Chart(sctx,{type:'line',data:{
+      labels:tail90.map(x=>x.date.slice(5)),
+      datasets:[{label:'SOFR-IORB(bp)',data:tail90.map(x=>x.bp),borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,0.07)',borderWidth:2,pointRadius:0,fill:true,tension:0.3}]
+    },options:{responsive:true,plugins:{legend:{display:false},annotation:{annotations:{zero:{type:'line',yMin:0,yMax:0,borderColor:'#f85149',borderDash:[4,4],borderWidth:1}}}},scales:{y:{ticks:{callback:v=>v+'bp'},grid:{color:'#21262d'}}}}});
+  }
+  // SRF 이용 차트
+  const tail90s=srf.slice(-90);
+  const uctx=document.getElementById('srfUtilChart');
+  if(uctx){
+    if(srfUtilChartObj)srfUtilChartObj.destroy();
+    srfUtilChartObj=new Chart(uctx,{type:'bar',data:{
+      labels:tail90s.map(x=>x.date.slice(5)),
+      datasets:[{label:'SRF($M)',data:tail90s.map(x=>x.v),backgroundColor:tail90s.map(x=>x.v>10000?'#f85149':x.v>0?'#d29922':'#3fb950')}]
+    },options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>v+'M'},grid:{color:'#21262d'}}}}});
+  }
+}
+
+async function loadShockData(){
+  if(_shockData)return;
+  const FRED_KEY=window.FRED_KEY||'';
+  const SHOCKS={'2019-09':{'date':'2019-09-17','label':'Repo rate spike'},'2020-03':{'date':'2020-03-15','label':'COVID crisis'},'2023-03':{'date':'2023-03-13','label':'SVB stress'}};
+  async function fetchRange(id,s,e){
+    const u=`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${FRED_KEY}&file_type=json&observation_start=${s}&observation_end=${e}`;
+    try{const r=await fetch(u);const d=await r.json();return (d.observations||[]).filter(x=>x.value!=='.').map(x=>({date:x.date,v:parseFloat(x.value)}));}catch{return [];}
+  }
+  const out={};
+  for(const[key,meta] of Object.entries(SHOCKS)){
+    const d0=new Date(meta.date);
+    const s=new Date(d0);s.setDate(s.getDate()-30);
+    const e=new Date(d0);e.setDate(e.getDate()+30);
+    const ss=s.toISOString().slice(0,10),ee=e.toISOString().slice(0,10);
+    const [sofr,iorb]=await Promise.all([fetchRange('SOFR',ss,ee),fetchRange('IORB',ss,ee)]);
+    const iM=Object.fromEntries(iorb.map(x=>[x.date,x.v]));
+    const sp=sofr.filter(x=>iM[x.date]!=null).map(x=>{
+      const diff=Math.round((new Date(x.date)-d0)/(86400000));
+      return {rel:diff,bp:((x.v-iM[x.date])*100).toFixed(2)*1};
+    });
+    out[key]={meta,spread:sp};
+  }
+  _shockData=out;
+}
+
+const SHOCK_COLORS={'2019-09':'#f85149','2020-03':'#f0883e','2023-03':'#a371f7'};
+function drawShockChart(mode){
+  const ctx=document.getElementById('srfShockChart');if(!ctx||!_shockData)return;
+  const datasets=[];
+  for(const[key,obj] of Object.entries(_shockData)){
+    if(mode!=='all'&&mode!==key)continue;
+    datasets.push({label:`${key} · ${obj.meta.label}`,data:obj.spread.map(r=>({x:r.rel,y:r.bp})),borderColor:SHOCK_COLORS[key],backgroundColor:SHOCK_COLORS[key]+'22',showLine:true,pointRadius:1,borderWidth:2,tension:0.2});
+  }
+  if(srfShockChartObj)srfShockChartObj.destroy();
+  srfShockChartObj=new Chart(ctx,{type:'scatter',data:{datasets},options:{responsive:true,plugins:{legend:{labels:{color:'var(--tx)',font:{size:11}}}},scales:{x:{title:{display:true,text:'쇼크일 기준 (day 0)',color:'var(--muted)'},type:'linear',grid:{color:'#21262d'}},y:{title:{display:true,text:'bp',color:'var(--muted)'},grid:{color:'#21262d'}}}}});
+}
+
+async function switchShock(mode,btn){
+  document.querySelectorAll('.shock-btn[data-shock]').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  await loadShockData();
+  drawShockChart(mode);
+}
+
+/* ═══════════════════════ LCLoR ═══════════════════════ */
+let _lclorMode='fed_comm', lclorChartObj=null;
+
+async function loadLCLoR(mode){
+  _lclorMode=mode||_lclorMode;
+  const FRED_KEY=window.FRED_KEY||'';
+  const end=new Date(),start=new Date();
+  start.setDate(end.getDate()-730);
+  const s=start.toISOString().slice(0,10),e=end.toISOString().slice(0,10);
+  async function f(id,freq){
+    const u=`https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${FRED_KEY}&file_type=json&observation_start=${s}&observation_end=${e}`;
+    try{const r=await fetch(u);const d=await r.json();return (d.observations||[]).filter(x=>x.value!=='.').map(x=>({date:x.date,v:parseFloat(x.value)}));}catch{return [];}
+  }
+  const [wresbal,gdp]=await Promise.all([f('WRESBAL'),f('GDP')]);
+  if(!wresbal.length)return;
+  const res_b=wresbal[wresbal.length-1].v/1000;
+  let lower_b,upper_b,label;
+  if(_lclorMode==='reserves_gdp'&&gdp.length){
+    const gdp_b=gdp[gdp.length-1].v;
+    lower_b=gdp_b*0.08;upper_b=lower_b*1.15;
+    label=`GDP $${gdp_b.toFixed(0)}B × 8%`;
+  }else{lower_b=2800;upper_b=3200;label='Fed 기준 $2.8~3.2T';}
+  function prox(r,lo,up){
+    if(r<=lo*0.9)return 100;
+    if(r>=up*1.3)return 0;
+    if(r>=up)return Math.round((up*1.3-r)/(up*0.3)*40);
+    if(r>=lo)return Math.round(40+(up-r)/(up-lo)*45);
+    return Math.round(85+(lo-r)/(lo*0.1)*15);
+  }
+  const p=prox(res_b,lower_b,upper_b);
+  const zones=['abundant','ample','approaching scarcity','scarce'];
+  const z=p<40?zones[0]:p<70?zones[1]:p<85?zones[2]:zones[3];
+  // DOM 업데이트
+  document.getElementById('lclor-prox').textContent=p+'%';
+  document.getElementById('lclor-zone').textContent=z.toUpperCase()+' · '+label;
+  document.getElementById('lclor-detail').textContent=`Reserves $${res_b.toFixed(1)}B / Upper $${upper_b.toFixed(0)}B`;
+  // 바늘 각도: 0%→-90°, 100%→+90° (반원)
+  const ang=-90+(p/100)*180;
+  const rad=ang*Math.PI/180;
+  const x2=100+72*Math.cos(rad),y2=100+72*Math.sin(rad);
+  const needle=document.getElementById('lclor-needle');
+  if(needle){needle.setAttribute('x2',x2.toFixed(1));needle.setAttribute('y2',y2.toFixed(1));}
+  // Reserves/GDP 차트
+  const gdpByDate=Object.fromEntries(gdp.map(x=>[x.date,x.v]));
+  const series=[];
+  const gdpDates=Object.keys(gdpByDate).sort();
+  for(const r of wresbal.slice(-104)){
+    const gd=gdpDates.filter(d=>d<=r.date).pop();
+    if(gd){const g=gdpByDate[gd];series.push({date:r.date,pct:(r.v/1000/g*100).toFixed(2)*1,res:r.v/1000});}
+  }
+  const cctx=document.getElementById('lclorChart');
+  if(cctx){
+    if(lclorChartObj)lclorChartObj.destroy();
+    lclorChartObj=new Chart(cctx,{type:'line',data:{
+      labels:series.map(x=>x.date.slice(2,7)),
+      datasets:[
+        {label:'Reserves/GDP%',data:series.map(x=>x.pct),borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,0.07)',borderWidth:2,pointRadius:0,fill:true,tension:0.3,yAxisID:'y'},
+        {label:'Reserves($B)',data:series.map(x=>x.res),borderColor:'#3fb950',borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'y1'}
+      ]
+    },options:{responsive:true,plugins:{legend:{labels:{color:'var(--tx)',font:{size:11}}},annotation:{annotations:{floor:{type:'line',yMin:8,yMax:8,yScaleID:'y',borderColor:'#f85149',borderDash:[4,4],borderWidth:1}}}},scales:{y:{position:'left',ticks:{callback:v=>v+'%'},grid:{color:'#21262d'}},y1:{position:'right',ticks:{callback:v=>v+'B'},grid:{drawOnChartArea:false}}}}});
+  }
+}
+
+function switchLCLoR(mode,btn){
+  document.querySelectorAll('[id^="lclor-mode-"]').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  loadLCLoR(mode);
+}
+
+/* ═══════════════════════ sw() 훅 ═══════════════════════ */
+// rates 탭 진입 시 SRF 로드
+const _origSw=window.sw||null;
+
+</script>
 <script>
 const C={};
 const N=(v,d=0)=>v==null||isNaN(v)?'—':new Intl.NumberFormat('ko-KR',{maximumFractionDigits:d}).format(v);
@@ -802,12 +1062,15 @@ function tip(key,btn){
 document.addEventListener('click',e=>{const el=document.getElementById('tipEl');if(el&&!e.target.classList.contains('ib'))el.style.display='none';});
 
 
-const TABS=['nl','rates','h41','m2','dts','qra','tic','cal'];
+const TABS=['nl','rates','h41','m2','dts','tic','cal'];
 function sw(name,btn){
   TABS.forEach(t=>{const el=document.getElementById('t-'+t);if(el)el.style.display=t===name?'':'none';});
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   if(btn)btn.classList.add('on');
   if(name==='cal')renderCal();
+  if(name==='dts')loadDTS();
+  if(name==='rates'){if(typeof loadRates==='function')loadRates();loadRatesSRF();loadShockData().then(()=>drawShockChart('all'));}
+  if(name==='m2'){if(typeof loadM2==='function')loadM2();loadLCLoR();}
 }
 
 function setSig(id,val,desc,pct,color){
